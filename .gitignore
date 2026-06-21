@@ -27,3 +27,6 @@ dist-ssr
 .planning/
 CLAUDE.md
 AGENTS.md
+
+# Build output
+release/

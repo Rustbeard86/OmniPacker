@@ -62,11 +62,13 @@ npm run tauri build -- --target x86_64-unknown-linux-gnu
 
 echo ""
 echo "Fixing AppImage icon integration..."
-APPIMAGE_PATH="$PROJECT_ROOT/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/OmniPacker_0.1.0_amd64.AppImage"
-if [ -f "$APPIMAGE_PATH" ]; then
+# Glob rather than hardcoding the version/arch in the filename (the bundle
+# version comes from tauri.conf.json and changes over releases).
+APPIMAGE_PATH=$(ls "$PROJECT_ROOT/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/"*.AppImage 2>/dev/null | head -1)
+if [ -n "$APPIMAGE_PATH" ] && [ -f "$APPIMAGE_PATH" ]; then
   "$SCRIPT_DIR/fix-appimage-icon.sh" "$APPIMAGE_PATH"
 else
-  echo "Warning: AppImage not found at $APPIMAGE_PATH"
+  echo "Warning: AppImage not found in bundle/appimage/"
 fi
 
 echo ""
