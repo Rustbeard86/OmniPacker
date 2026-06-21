@@ -30,3 +30,6 @@ AGENTS.md
 
 # Build output
 release/
+
+# Vendored sidecars are built locally (scripts/rebuild-depotdownloader.ps1)
+src-tauri/binaries/
