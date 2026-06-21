@@ -20,7 +20,7 @@ use crate::job_finalization::{finalize_job, resolve_archive_path};
 use crate::job_metadata::{BuildIdSource, DepotInfo, JobMetadataFile};
 use crate::job_staging::{cleanup_staging_dir, create_staging_dir, generate_job_id};
 use crate::manifest_preflight::{build_preflight_args, parse_preflight_output};
-use crate::output_dir::resolve_downloads_dir;
+use crate::output_dir::{resolve_credentials_dir, resolve_downloads_dir};
 use crate::steam_api::fetch_app_info;
 use crate::steamdb_api::fetch_build_date;
 use crate::template_metadata::{TemplateMetadata, TemplateMetadataState};
@@ -35,6 +35,8 @@ pub struct JobMetadata {
     pub app_id: String,
     pub os: String,
     pub branch: String,
+    #[serde(default)]
+    pub branch_password: String,
     pub username: String,
     pub password: String,
     pub qr_enabled: bool,
@@ -611,6 +613,11 @@ fn build_depot_args(job: &JobMetadata) -> Result<Vec<String>, String> {
         args.push(job.branch.clone());
     }
 
+    if !job.branch_password.is_empty() {
+        args.push("-branchpassword".to_string());
+        args.push(job.branch_password.clone());
+    }
+
     let (os, arch) = map_os_selection(&job.os);
     args.push("-os".to_string());
     args.push(os.to_string());
@@ -724,7 +731,7 @@ fn resolve_auth_cache_dir(app_handle: &AppHandle, username: &str) -> Result<Path
     Ok(auth_root.join(sanitize_auth_username(username)))
 }
 
-fn restore_auth_cache(
+pub(crate) fn restore_auth_cache(
     app_handle: &AppHandle,
     username: &str,
     target_dir: &Path,
@@ -763,7 +770,7 @@ fn restore_auth_cache(
     Ok(())
 }
 
-fn persist_auth_cache(
+pub(crate) fn persist_auth_cache(
     app_handle: &AppHandle,
     username: &str,
     source_dir: &Path,
@@ -1034,6 +1041,9 @@ fn run_depotdownloader_worker(
     let mut command = Command::new(&path);
     command.args(&args);
     command.current_dir(&staging_dir);
+    if let Ok(cred) = resolve_credentials_dir(&app_handle) {
+        command.env("DEPOTDOWNLOADER_CONFIG_DIR", cred);
+    }
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
     command.stdin(Stdio::piped());
@@ -1618,6 +1628,9 @@ fn run_preflight_before_download(
     let mut command = Command::new(&dd_path);
     command.args(&args);
     command.current_dir(&preflight_dir);
+    if let Ok(cred) = resolve_credentials_dir(&app_handle) {
+        command.env("DEPOTDOWNLOADER_CONFIG_DIR", cred);
+    }
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
     command.stdin(Stdio::piped());
@@ -1951,7 +1964,7 @@ fn spawn_preflight_reader(
     })
 }
 
-fn decode_stream_bytes(bytes: &[u8]) -> String {
+pub(crate) fn decode_stream_bytes(bytes: &[u8]) -> String {
     #[cfg(windows)]
     {
         decode_console_bytes(bytes)

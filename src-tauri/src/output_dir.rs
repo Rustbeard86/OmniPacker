@@ -171,6 +171,17 @@ pub fn resolve_downloads_dir(app_handle: &AppHandle) -> Result<PathBuf, String> 
     Ok(fallback_dir)
 }
 
+/// Stable directory for DepotDownloader's shared credential store
+/// (`account.config`: refresh token + Steam Guard machine data). Passed to every
+/// DepotDownloader spawn via the `DEPOTDOWNLOADER_CONFIG_DIR` env var so the login
+/// persists across runs/updates and is shared by downloads and the library.
+pub fn resolve_credentials_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    let dir = resolve_downloads_dir(app_handle)?.join(".credentials");
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| format!("Failed to create credentials directory: {err}"))?;
+    Ok(dir)
+}
+
 #[tauri::command]
 pub fn get_output_folder(app_handle: AppHandle) -> Result<String, String> {
     let path = resolve_downloads_dir(&app_handle)?;

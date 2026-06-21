@@ -46,6 +46,11 @@ pub fn build_preflight_args(job: &JobMetadata) -> Result<Vec<String>, String> {
         args.push(job.branch.clone());
     }
 
+    if !job.branch_password.is_empty() {
+        args.push("-branchpassword".to_string());
+        args.push(job.branch_password.clone());
+    }
+
     // OS/arch for depot selection (though we don't filter, DD might need it)
     let (os, arch) = map_os_selection(&job.os);
     args.push("-os".to_string());

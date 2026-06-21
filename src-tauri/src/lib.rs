@@ -9,6 +9,7 @@ mod login_store;
 mod manifest_preflight;
 mod output_conflict;
 pub(crate) mod output_dir;
+mod owned_apps;
 mod appimage_integration;
 mod steam_api;
 mod steamcmd_api;
@@ -16,6 +17,7 @@ mod steamdb_api;
 mod template_metadata;
 mod template_renderer;
 mod template_store;
+mod update_watcher;
 mod zip_runner;
 
 use debug_console::{debug_console_enabled, debug_console_log, DebugConsoleState};
@@ -26,8 +28,14 @@ use job_staging::cleanup_orphaned_staging;
 use login_store::{delete_login_data, load_login_data, save_login_data};
 use output_conflict::{resolve_output_conflict, OutputConflictState};
 use output_dir::{get_output_folder, open_output_folder};
+use owned_apps::{
+    cancel_enumeration, enumerate_owned_apps, submit_enum_steam_guard_code, EnumRunnerState,
+};
 use template_metadata::{get_template_metadata, TemplateMetadataState};
 use template_store::{load_template_data, save_template_data};
+use update_watcher::{
+    check_updates_now, get_watch_config, set_app_watch, set_watch_settings, WatcherState,
+};
 use zip_runner::{cancel_7zip, run_7zip, SevenZipRunnerState};
 use std::sync::OnceLock;
 use tauri::Manager;
@@ -82,6 +90,8 @@ pub fn run() {
         .manage(SevenZipRunnerState::new())
         .manage(TemplateMetadataState::default())
         .manage(OutputConflictState::new())
+        .manage(EnumRunnerState::new())
+        .manage(WatcherState::new())
         .manage(DebugConsoleState::new(debug_console_flag))
         .setup(|app| {
             let app_handle = app.handle();
@@ -96,6 +106,10 @@ pub fn run() {
                 }
             }
             appimage_integration::maybe_install_appimage_integration(&app_handle);
+            update_watcher::start(
+                app_handle.clone(),
+                app.state::<WatcherState>().inner().clone(),
+            );
             if let Some(window) = app.get_webview_window("main") {
                 fit_window_to_monitor(&window);
             }
@@ -136,7 +150,14 @@ pub fn run() {
             get_template_metadata,
             save_template_data,
             load_template_data,
-            resolve_output_conflict
+            resolve_output_conflict,
+            enumerate_owned_apps,
+            submit_enum_steam_guard_code,
+            cancel_enumeration,
+            get_watch_config,
+            set_watch_settings,
+            set_app_watch,
+            check_updates_now
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -150,6 +171,7 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 app_handle.state::<DepotRunnerState>().kill_child();
                 app_handle.state::<SevenZipRunnerState>().kill_child();
+                app_handle.state::<EnumRunnerState>().kill_child();
             }
         });
 }
