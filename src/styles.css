@@ -1003,3 +1003,12 @@ input:disabled {
 .library-watch-toggle.watched {
   color: #c7b56a;
 }
+
+.library-auto-archive {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  opacity: 0.85;
+  white-space: nowrap;
+}

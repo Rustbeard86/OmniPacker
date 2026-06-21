@@ -43,6 +43,9 @@ pub struct WatchEntry {
     /// Last build id we've observed for `branch`; `None` until the first poll.
     #[serde(default)]
     pub last_build_id: Option<String>,
+    /// Auto-enqueue an archive job when this app updates.
+    #[serde(default)]
+    pub auto_archive: bool,
 }
 
 fn default_public_branch() -> String {
@@ -210,6 +213,7 @@ struct UpdatePayload {
     branch: String,
     previous_build_id: String,
     build_id: String,
+    auto_archive: bool,
 }
 
 /// Runs one poll: queries build ids for all watched apps, compares to the stored
@@ -247,6 +251,7 @@ fn run_poll(app_handle: &AppHandle, state: &WatcherState) {
                         branch: entry.branch.clone(),
                         previous_build_id: prev.clone(),
                         build_id: current.clone(),
+                        auto_archive: entry.auto_archive,
                     });
                     entry.last_build_id = Some(current);
                 }
@@ -325,6 +330,7 @@ pub fn set_app_watch(
     name: String,
     branch: String,
     enabled: bool,
+    auto_archive: bool,
 ) -> Result<(), String> {
     let mut guard = state
         .config
@@ -340,8 +346,10 @@ pub fn set_app_watch(
                 branch.clone()
             },
             last_build_id: None,
+            auto_archive,
         });
         entry.name = name;
+        entry.auto_archive = auto_archive;
         if !branch.is_empty() {
             // Changing the watched branch resets the baseline.
             if entry.branch != branch {

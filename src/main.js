@@ -120,8 +120,8 @@ const libraryState = {
   filter: "",
   // appid (string) -> { selected, branch, branchPassword }
   selection: new Map(),
-  // appid strings currently watched for updates
-  watched: new Set(),
+  // appid string -> { autoArchive: bool } for watched apps
+  watched: new Map(),
 };
 
 // Updates detected by the background watcher this session.
@@ -3579,7 +3579,11 @@ const loadWatchConfig = async () => {
   if (!tauriInvoke) return;
   try {
     const cfg = await tauriInvoke("get_watch_config");
-    libraryState.watched = new Set(Object.keys(cfg?.apps ?? {}));
+    const map = new Map();
+    for (const [appid, entry] of Object.entries(cfg?.apps ?? {})) {
+      map.set(appid, { autoArchive: Boolean(entry?.autoArchive) });
+    }
+    libraryState.watched = map;
     if (watchEnabledToggle) watchEnabledToggle.checked = Boolean(cfg?.enabled);
     if (watchIntervalInput && Number.isFinite(cfg?.intervalMinutes)) {
       watchIntervalInput.value = cfg.intervalMinutes;
@@ -3614,12 +3618,49 @@ const toggleWatch = async (app) => {
       name: app.name || `App ${app.appid}`,
       branch: entry.branch || defaultBranchFor(app),
       enabled,
+      autoArchive: false,
     });
-    if (enabled) libraryState.watched.add(key);
+    if (enabled) libraryState.watched.set(key, { autoArchive: false });
     else libraryState.watched.delete(key);
     renderLibrary();
   } catch (error) {
     setLibraryStatus(`Failed to update watch: ${error}`);
+  }
+};
+
+const setAutoArchive = async (app, value) => {
+  if (!tauriInvoke) return;
+  const key = String(app.appid);
+  const entry = getSelectionEntry(app.appid);
+  try {
+    await tauriInvoke("set_app_watch", {
+      appid: app.appid,
+      name: app.name || `App ${app.appid}`,
+      branch: entry.branch || defaultBranchFor(app),
+      enabled: true,
+      autoArchive: value,
+    });
+    libraryState.watched.set(key, { autoArchive: value });
+  } catch (error) {
+    setLibraryStatus(`Failed to update auto-archive: ${error}`);
+  }
+};
+
+// Enqueue (and start, if idle) an archive job for an app that just updated.
+const autoArchiveUpdate = (update) => {
+  const job = createJob({
+    appId: String(update.appid),
+    os: osSelect?.value || "Windows x64",
+    branch: update.branch || "public",
+    branchPassword: "",
+    username: steamUsernameInput?.value?.trim() || "",
+    password: steamPasswordInput?.value || "",
+    qrEnabled: Boolean(qrLoginToggle?.checked),
+  });
+  job.status = "queued";
+  renderAll();
+  if (!jobState.runningJobId) {
+    void startJob();
   }
 };
 
@@ -3807,7 +3848,8 @@ const renderLibrary = () => {
     branchWrap.appendChild(select);
     branchWrap.appendChild(pwInput);
 
-    const watched = libraryState.watched.has(String(app.appid));
+    const watchInfo = libraryState.watched.get(String(app.appid));
+    const watched = Boolean(watchInfo);
     const watchBtn = document.createElement("button");
     watchBtn.type = "button";
     watchBtn.className = `library-watch-toggle${watched ? " watched" : ""}`;
@@ -3817,6 +3859,22 @@ const renderLibrary = () => {
       : "Watch this app for updates";
     watchBtn.addEventListener("click", () => void toggleWatch(app));
     branchWrap.appendChild(watchBtn);
+
+    if (watched) {
+      const autoLabel = document.createElement("label");
+      autoLabel.className = "library-auto-archive";
+      autoLabel.title = "Automatically archive this app when it updates";
+      const autoCb = document.createElement("input");
+      autoCb.type = "checkbox";
+      autoCb.checked = Boolean(watchInfo.autoArchive);
+      autoCb.addEventListener("change", () => {
+        watchInfo.autoArchive = autoCb.checked;
+        void setAutoArchive(app, autoCb.checked);
+      });
+      autoLabel.appendChild(autoCb);
+      autoLabel.appendChild(document.createTextNode("auto"));
+      branchWrap.appendChild(autoLabel);
+    }
 
     row.appendChild(checkbox);
     row.appendChild(main);
@@ -4021,6 +4079,9 @@ if (tauriEvent?.listen) {
     if (!exists) {
       updatesState.items.unshift(u);
       renderUpdatesBanner();
+      if (u.autoArchive) {
+        autoArchiveUpdate(u);
+      }
     }
   });
 
