@@ -3646,18 +3646,39 @@ const setAutoArchive = async (app, value) => {
   }
 };
 
-// Enqueue (and start, if idle) an archive job for an app that just updated.
-const autoArchiveUpdate = (update) => {
-  const job = createJob({
-    appId: String(update.appid),
-    os: osSelect?.value || "Windows x64",
-    branch: update.branch || "public",
-    branchPassword: "",
-    username: steamUsernameInput?.value?.trim() || "",
-    password: steamPasswordInput?.value || "",
-    qrEnabled: Boolean(qrLoginToggle?.checked),
-  });
-  job.status = "queued";
+// Enqueue (and start, if idle) archive job(s) for an app that just updated,
+// honoring its per-game config (target OS list + branch) when present.
+const autoArchiveUpdate = async (update) => {
+  let osTargets = [];
+  let branch = update.branch || "public";
+  try {
+    const cfg = await tauriInvoke("get_app_config", { appid: update.appid });
+    if (Array.isArray(cfg?.osTargets) && cfg.osTargets.length) {
+      osTargets = cfg.osTargets;
+    }
+    if (cfg?.branch) branch = cfg.branch;
+  } catch (error) {
+    console.debug("[OmniPacker] app config lookup failed:", error);
+  }
+  if (osTargets.length === 0) {
+    osTargets = [osSelect?.value || "Windows x64"];
+  }
+
+  const username = steamUsernameInput?.value?.trim() || "";
+  const password = steamPasswordInput?.value || "";
+  const qrEnabled = Boolean(qrLoginToggle?.checked);
+  for (const os of osTargets) {
+    const job = createJob({
+      appId: String(update.appid),
+      os,
+      branch,
+      branchPassword: "",
+      username,
+      password,
+      qrEnabled,
+    });
+    job.status = "queued";
+  }
   renderAll();
   if (!jobState.runningJobId) {
     void startJob();
@@ -3876,6 +3897,14 @@ const renderLibrary = () => {
       branchWrap.appendChild(autoLabel);
     }
 
+    const configBtn = document.createElement("button");
+    configBtn.type = "button";
+    configBtn.className = "library-config-button";
+    configBtn.textContent = "⚙";
+    configBtn.title = "Per-game archive config (depots, OS targets)";
+    configBtn.addEventListener("click", () => void openAppConfig(app));
+    branchWrap.appendChild(configBtn);
+
     row.appendChild(checkbox);
     row.appendChild(main);
     row.appendChild(branchWrap);
@@ -4002,6 +4031,156 @@ const addSelectedToQueue = () => {
   renderLibrary();
 };
 
+// ----- Per-game config modal -----
+const appConfigOverlay = document.querySelector(".app-config-overlay");
+const appConfigTitle = document.querySelector(".app-config-title");
+const appConfigBranch = document.getElementById("app-config-branch");
+const appConfigOsEl = document.querySelector(".app-config-os");
+const appConfigDepotsEl = document.querySelector(".app-config-depots");
+const appConfigStatus = document.querySelector(".app-config-status");
+const appConfigSaveBtn = document.querySelector(".app-config-save");
+const appConfigCloseBtn = document.querySelector(".app-config-close");
+let appConfigCurrentApp = null;
+let appConfigOsBoxes = {};
+
+const humanSize = (bytes) => {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+};
+
+const osTargetValues = () =>
+  Array.from(osSelect?.options ?? []).map((o) => o.value);
+
+const renderConfigDepots = (depots) => {
+  if (!appConfigDepotsEl) return;
+  appConfigDepotsEl.innerHTML = "";
+  if (!depots || depots.length === 0) {
+    appConfigDepotsEl.textContent = "No depots reported.";
+    return;
+  }
+  for (const d of depots) {
+    const row = document.createElement("div");
+    row.className = "app-config-depot";
+    const left = document.createElement("span");
+    left.textContent = `${d.depotId}${d.name ? ` · ${d.name}` : ""}`;
+    const right = document.createElement("span");
+    right.className = "meta";
+    const parts = [];
+    if (d.oslist) parts.push(d.oslist);
+    const size = humanSize(d.size);
+    if (size) parts.push(size);
+    right.textContent = parts.join(" · ");
+    row.appendChild(left);
+    row.appendChild(right);
+    appConfigDepotsEl.appendChild(row);
+  }
+};
+
+const closeAppConfig = () => {
+  appConfigOverlay?.classList.remove("active");
+  appConfigCurrentApp = null;
+};
+
+const openAppConfig = async (app) => {
+  if (!tauriInvoke) return;
+  appConfigCurrentApp = app;
+  if (appConfigTitle) {
+    appConfigTitle.textContent = `Config — ${app.name || `App ${app.appid}`}`;
+  }
+  if (appConfigStatus) appConfigStatus.textContent = "Loading depots…";
+  if (appConfigDepotsEl) appConfigDepotsEl.innerHTML = "";
+
+  if (appConfigBranch) {
+    appConfigBranch.innerHTML = "";
+    const def = document.createElement("option");
+    def.value = "";
+    def.textContent = "(default / public)";
+    appConfigBranch.appendChild(def);
+    for (const b of app.branches || []) {
+      const o = document.createElement("option");
+      o.value = b.name;
+      o.textContent = b.pwdRequired ? `🔒 ${b.name}` : b.name;
+      appConfigBranch.appendChild(o);
+    }
+  }
+
+  appConfigOsBoxes = {};
+  if (appConfigOsEl) {
+    appConfigOsEl.innerHTML = "";
+    for (const os of osTargetValues()) {
+      const label = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(os));
+      appConfigOsEl.appendChild(label);
+      appConfigOsBoxes[os] = cb;
+    }
+  }
+
+  appConfigOverlay?.classList.add("active");
+
+  try {
+    const cfg = await tauriInvoke("get_app_config", { appid: app.appid });
+    if (appConfigBranch && cfg?.branch) appConfigBranch.value = cfg.branch;
+    for (const os of cfg?.osTargets || []) {
+      if (appConfigOsBoxes[os]) appConfigOsBoxes[os].checked = true;
+    }
+  } catch (error) {
+    console.debug("[OmniPacker] config load failed:", error);
+  }
+
+  try {
+    const details = await tauriInvoke("get_app_detail", {
+      input: {
+        appids: [app.appid],
+        username: steamUsernameInput?.value?.trim() || "",
+      },
+    });
+    const detail = Array.isArray(details) ? details[0] : null;
+    renderConfigDepots(detail?.depots || []);
+    if (appConfigStatus) {
+      appConfigStatus.textContent = `${(detail?.depots || []).length} depots`;
+    }
+  } catch (error) {
+    if (appConfigStatus) {
+      appConfigStatus.textContent = `Couldn't load depots: ${error}`;
+    }
+  }
+};
+
+const saveAppConfig = async () => {
+  if (!tauriInvoke || !appConfigCurrentApp) return;
+  const osTargets = osTargetValues().filter((os) => appConfigOsBoxes[os]?.checked);
+  try {
+    await tauriInvoke("set_app_config", {
+      appid: appConfigCurrentApp.appid,
+      config: { branch: appConfigBranch?.value || "", osTargets },
+    });
+    closeAppConfig();
+  } catch (error) {
+    if (appConfigStatus) appConfigStatus.textContent = `Save failed: ${error}`;
+  }
+};
+
+if (appConfigSaveBtn) {
+  appConfigSaveBtn.addEventListener("click", () => void saveAppConfig());
+}
+if (appConfigCloseBtn) appConfigCloseBtn.addEventListener("click", closeAppConfig);
+if (appConfigOverlay) {
+  appConfigOverlay.addEventListener("click", (e) => {
+    if (e.target === appConfigOverlay) closeAppConfig();
+  });
+}
+
 if (libraryLoadButton) {
   libraryLoadButton.addEventListener("click", () => void loadLibrary());
 }
@@ -4080,7 +4259,7 @@ if (tauriEvent?.listen) {
       updatesState.items.unshift(u);
       renderUpdatesBanner();
       if (u.autoArchive) {
-        autoArchiveUpdate(u);
+        void autoArchiveUpdate(u);
       }
     }
   });

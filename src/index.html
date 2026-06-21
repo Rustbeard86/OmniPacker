@@ -309,6 +309,32 @@
       </div>
     </div>
 
+    <div class="modal-overlay app-config-overlay" role="dialog" aria-modal="true">
+      <div class="modal app-config-modal">
+        <div class="modal-title app-config-title">Game Config</div>
+        <div class="app-config-body">
+          <div class="app-config-field">
+            <label class="app-config-label" for="app-config-branch">Branch</label>
+            <select id="app-config-branch" class="app-config-branch"></select>
+          </div>
+          <div class="app-config-field">
+            <span class="app-config-label">Archive these OS targets</span>
+            <div class="app-config-os"></div>
+            <span class="settings-hint">Leave all unchecked to use the OS selector on the Queue tab.</span>
+          </div>
+          <div class="app-config-field">
+            <span class="app-config-label">Depots</span>
+            <div class="app-config-depots"></div>
+          </div>
+          <div class="app-config-status" aria-live="polite"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="app-config-save">Save</button>
+          <button type="button" class="app-config-close">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-overlay steam-guard-modal-overlay" role="dialog" aria-modal="true">
       <div class="modal steam-guard-modal">
         <div class="modal-title" data-i18n="steamGuard.title">Steam Guard Confirmation</div>

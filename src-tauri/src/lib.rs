@@ -1,4 +1,5 @@
 mod acf_generator;
+mod app_detail;
 pub(crate) mod debug_console;
 mod debug_log;
 mod depot_runner;
@@ -20,6 +21,7 @@ mod template_store;
 mod update_watcher;
 mod zip_runner;
 
+use app_detail::{get_app_config, get_app_detail, set_app_config, AppConfigState};
 use debug_console::{debug_console_enabled, debug_console_log, DebugConsoleState};
 use depot_runner::{
     cancel_depotdownloader, run_depotdownloader, submit_steam_guard_code, DepotRunnerState,
@@ -92,6 +94,7 @@ pub fn run() {
         .manage(OutputConflictState::new())
         .manage(EnumRunnerState::new())
         .manage(WatcherState::new())
+        .manage(AppConfigState::new())
         .manage(DebugConsoleState::new(debug_console_flag))
         .setup(|app| {
             let app_handle = app.handle();
@@ -157,7 +160,10 @@ pub fn run() {
             get_watch_config,
             set_watch_settings,
             set_app_watch,
-            check_updates_now
+            check_updates_now,
+            get_app_detail,
+            get_app_config,
+            set_app_config
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
