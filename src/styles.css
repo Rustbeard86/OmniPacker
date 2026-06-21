@@ -839,3 +839,167 @@ input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ===== Library tab ===== */
+.library-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  height: 100%;
+  min-height: 0;
+}
+
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.library-search {
+  flex: 1 1 240px;
+  min-width: 160px;
+  height: 28px;
+  background: #1b1a1b;
+  color: #e6e6e6;
+  border: 1px solid #505050;
+  padding: 4px 8px;
+}
+
+.library-include-free {
+  white-space: nowrap;
+}
+
+.library-status {
+  font-size: 12px;
+  opacity: 0.85;
+  margin-left: auto;
+}
+
+.library-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #111011;
+  border: 1px solid #505050;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.library-empty {
+  opacity: 0.6;
+  padding: 24px;
+  text-align: center;
+}
+
+.library-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px 12px;
+  border: 1px solid #505050;
+  background: #2a292a;
+  padding: 6px 10px;
+}
+
+.library-item-main {
+  min-width: 0;
+}
+
+.library-item-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.library-item-meta {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.library-item-branch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.library-branch-select {
+  height: 26px;
+  background: #1b1a1b;
+  color: #e6e6e6;
+  border: 1px solid #505050;
+  max-width: 180px;
+}
+
+.library-branch-password {
+  width: 130px;
+  height: 26px;
+  background: #1b1a1b;
+  color: #e6e6e6;
+  border: 1px solid #505050;
+  padding: 2px 6px;
+}
+
+.library-branch-lock {
+  color: #c7b56a;
+}
+
+.library-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.library-selection-count {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.library-add-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ===== Library update watcher ===== */
+.library-updates {
+  border: 1px solid #c7b56a;
+  background: #3a3527;
+  color: #e6e6e6;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.library-updates-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.library-updates-row .name {
+  font-weight: 600;
+}
+
+.library-watch-toggle {
+  background: transparent;
+  border: none;
+  color: #666;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.library-watch-toggle.watched {
+  color: #c7b56a;
+}

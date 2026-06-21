@@ -14,6 +14,9 @@
         <button class="tab active" type="button" role="tab" data-tab="queue" data-i18n="tab.queue">
           Queue
         </button>
+        <button class="tab" type="button" role="tab" data-tab="library">
+          Library
+        </button>
         <button class="tab" type="button" role="tab" data-tab="console" data-i18n="tab.console">
           Console
         </button>
@@ -99,6 +102,37 @@
         </div>
       </section>
 
+      <section class="tab-content" id="tab-library" role="tabpanel">
+        <div class="library-layout">
+          <div class="library-toolbar">
+            <button type="button" class="library-load-button">Load My Library</button>
+            <button type="button" class="library-refresh-button" title="Re-fetch from Steam">
+              Refresh
+            </button>
+            <label class="checkbox-row library-include-free">
+              <input id="library-include-free" type="checkbox" />
+              <span>Include free-to-play</span>
+            </label>
+            <input
+              id="library-search"
+              class="library-search"
+              type="search"
+              placeholder="Search by name or AppID…"
+              disabled
+            />
+            <span class="library-status" aria-live="polite"></span>
+          </div>
+          <div id="library-updates" class="library-updates" hidden></div>
+          <div id="library-list" class="library-list" role="listbox"></div>
+          <div class="library-footer">
+            <span class="library-selection-count">0 selected</span>
+            <button type="button" class="library-add-button" disabled>
+              Add Selected to Queue
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section class="tab-content" id="tab-console" role="tabpanel">
         <div class="console-layout">
           <textarea class="console-output" readonly>
@@ -173,6 +207,20 @@
               <input id="default-qr-toggle" type="checkbox" />
               <span data-i18n="settings.defaultQrLogin">Default to QR Login</span>
             </label>
+          </div>
+
+          <div class="settings-group">
+            <label class="settings-checkbox-row">
+              <input id="watch-enabled-toggle" type="checkbox" />
+              <span>Enable update watcher</span>
+            </label>
+            <div class="settings-password-row">
+              <label class="settings-label" for="watch-interval-input">Check interval (minutes):</label>
+              <input id="watch-interval-input" type="number" min="5" step="5" value="60" />
+            </div>
+            <span class="settings-hint">
+              Periodically checks owned-app build ids and notifies when a watched app updates. Mark apps with ★ in the Library tab. Requires signing in once via the Library.
+            </span>
           </div>
 
           <div class="settings-group">

@@ -112,6 +112,36 @@ const steamGuardEmailRetryState = {
   requested: false,
 };
 
+// Owned-app library picker (Library tab).
+const libraryState = {
+  apps: [], // [{ appid, name, type, branches: [{name, buildId, timeUpdated, pwdRequired}] }]
+  loaded: false,
+  loading: false,
+  filter: "",
+  // appid (string) -> { selected, branch, branchPassword }
+  selection: new Map(),
+  // appid strings currently watched for updates
+  watched: new Set(),
+};
+
+// Updates detected by the background watcher this session.
+const updatesState = {
+  items: [], // [{ appid, name, branch, buildId, previousBuildId }]
+};
+
+// Lightweight pseudo-job for the enumeration login flow so the existing QR /
+// Steam Guard handlers can be reused without a real queue job.
+const enumState = {
+  active: false,
+  qrEnabled: false,
+  qrCaptureActive: false,
+  qrCaptureLines: [],
+  qrText: null,
+  // Live debug log for the Library flow, surfaced in the Console tab.
+  log: [],
+  showInConsole: false,
+};
+
 const LOG_LINE_CAP = 10000;
 const LOG_TRIM_MARGIN = 1000;
 const CONSOLE_FLUSH_INTERVAL_MS = 120;
@@ -1870,6 +1900,8 @@ const getFormSnapshot = () => ({
   appId: appIdInput?.value?.trim() || "unknown",
   os: osSelect?.value || "unknown",
   branch: branchInput?.value?.trim() || "public",
+  branchPassword:
+    branchToggle?.checked ? branchPassword?.value || "" : "",
   username: steamUsernameInput?.value?.trim() || "",
   password: steamPasswordInput?.value || "",
   qrEnabled: Boolean(qrLoginToggle?.checked),
@@ -1933,12 +1965,21 @@ const setSavedLogin = (login) => {
 
 const hasSavedLogin = () => Boolean(authState.savedLogin);
 
-const createJob = ({ appId, os, branch, username, password, qrEnabled }) => {
+const createJob = ({
+  appId,
+  os,
+  branch,
+  branchPassword: jobBranchPassword,
+  username,
+  password,
+  qrEnabled,
+}) => {
   const job = {
     id: createJobId(),
     appId,
     os,
     branch,
+    branchPassword: jobBranchPassword || "",
     username,
     password,
     qrEnabled,
@@ -2319,7 +2360,10 @@ const submitSteamGuardEmailCode = async () => {
 
   try {
     setSteamGuardEmailBusy(true);
-    await tauriInvoke("submit_steam_guard_code", { code });
+    await tauriInvoke(
+      enumState.active ? "submit_enum_steam_guard_code" : "submit_steam_guard_code",
+      { code },
+    );
     if (job) {
       pushJobLog(job, t("steamGuard.email.sent"));
       job.steamGuardEmailPending = false;
@@ -2799,6 +2843,7 @@ const buildJobMetadata = (job) => ({
   appId: job.appId || "unknown",
   os: job.os || "Windows x64",
   branch: job.branch || "public",
+  branchPassword: job.branchPassword || "",
   username: job.username || "",
   password: job.password || "",
   qrEnabled: Boolean(job.qrEnabled),
@@ -3013,6 +3058,7 @@ const addJobToQueue = () => {
   const job = createJob(getFormSnapshot());
   job.status = "queued";
   jobState.selectedJobId = job.id;
+  enumState.showInConsole = false;
   if (appIdInput) {
     appIdInput.value = "";
   }
@@ -3200,12 +3246,14 @@ const renderQueue = () => {
 
     row.addEventListener("click", () => {
       jobState.selectedJobId = job.id;
+      enumState.showInConsole = false; // selecting a job reverts the Console view
       renderAll();
     });
     row.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         jobState.selectedJobId = job.id;
+        enumState.showInConsole = false;
         renderAll();
       }
     });
@@ -3225,6 +3273,19 @@ const renderConsole = (force = false) => {
   if (consoleRenderState.timer) {
     window.clearTimeout(consoleRenderState.timer);
     consoleRenderState.timer = null;
+  }
+
+  // Library (owned-app enumeration) has no queue job, so surface its live log
+  // here as the debug view until the user selects a queue job.
+  if (enumState.showInConsole) {
+    consoleOutput.value = enumState.log.length
+      ? enumState.log.join("\n")
+      : "Library: waiting for DepotDownloader output…";
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    consoleRenderState.jobId = "__enum__";
+    consoleRenderState.renderedLines = 0;
+    consoleRenderState.needsFullRender = true;
+    return;
   }
 
   const selectedJob = getSelectedJob();
@@ -3498,6 +3559,479 @@ if (branchInput && !branchInput.value) {
 // At or above design size: let the layout flow naturally to fill the space.
 const DESIGN_WIDTH = 1140;
 const DESIGN_HEIGHT = 760;
+
+// ===== Library tab (owned-app picker) =====
+const libraryLoadButton = document.querySelector(".library-load-button");
+const libraryRefreshButton = document.querySelector(".library-refresh-button");
+const libraryIncludeFree = document.getElementById("library-include-free");
+const librarySearch = document.getElementById("library-search");
+const libraryListEl = document.getElementById("library-list");
+const libraryStatusEl = document.querySelector(".library-status");
+const librarySelectionCountEl = document.querySelector(
+  ".library-selection-count",
+);
+const libraryAddButton = document.querySelector(".library-add-button");
+const libraryUpdatesEl = document.getElementById("library-updates");
+const watchEnabledToggle = document.getElementById("watch-enabled-toggle");
+const watchIntervalInput = document.getElementById("watch-interval-input");
+
+const loadWatchConfig = async () => {
+  if (!tauriInvoke) return;
+  try {
+    const cfg = await tauriInvoke("get_watch_config");
+    libraryState.watched = new Set(Object.keys(cfg?.apps ?? {}));
+    if (watchEnabledToggle) watchEnabledToggle.checked = Boolean(cfg?.enabled);
+    if (watchIntervalInput && Number.isFinite(cfg?.intervalMinutes)) {
+      watchIntervalInput.value = cfg.intervalMinutes;
+    }
+  } catch (error) {
+    console.debug("[OmniPacker] Failed to load watch config:", error);
+  }
+};
+
+const applyWatchSettings = async () => {
+  if (!tauriInvoke) return;
+  const interval = Math.max(5, Number(watchIntervalInput?.value) || 60);
+  try {
+    await tauriInvoke("set_watch_settings", {
+      enabled: Boolean(watchEnabledToggle?.checked),
+      intervalMinutes: interval,
+      username: steamUsernameInput?.value?.trim() || "",
+    });
+  } catch (error) {
+    console.debug("[OmniPacker] Failed to save watch settings:", error);
+  }
+};
+
+const toggleWatch = async (app) => {
+  if (!tauriInvoke) return;
+  const key = String(app.appid);
+  const enabled = !libraryState.watched.has(key);
+  const entry = getSelectionEntry(app.appid);
+  try {
+    await tauriInvoke("set_app_watch", {
+      appid: app.appid,
+      name: app.name || `App ${app.appid}`,
+      branch: entry.branch || defaultBranchFor(app),
+      enabled,
+    });
+    if (enabled) libraryState.watched.add(key);
+    else libraryState.watched.delete(key);
+    renderLibrary();
+  } catch (error) {
+    setLibraryStatus(`Failed to update watch: ${error}`);
+  }
+};
+
+const renderUpdatesBanner = () => {
+  if (!libraryUpdatesEl) return;
+  if (updatesState.items.length === 0) {
+    libraryUpdatesEl.hidden = true;
+    libraryUpdatesEl.innerHTML = "";
+    return;
+  }
+  libraryUpdatesEl.hidden = false;
+  libraryUpdatesEl.innerHTML = "";
+  for (const item of updatesState.items) {
+    const row = document.createElement("div");
+    row.className = "library-updates-row";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = `⬆ ${item.name || `App ${item.appid}`}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${item.branch} · build ${item.buildId}`;
+    row.appendChild(name);
+    row.appendChild(meta);
+    libraryUpdatesEl.appendChild(row);
+  }
+};
+
+const setLibraryStatus = (text) => {
+  if (libraryStatusEl) libraryStatusEl.textContent = text || "";
+};
+
+const ENUM_LOG_CAP = 2000;
+const pushEnumLog = (line) => {
+  if (line == null) return;
+  enumState.log.push(String(line));
+  if (enumState.log.length > ENUM_LOG_CAP) {
+    enumState.log.splice(0, enumState.log.length - ENUM_LOG_CAP);
+  }
+  if (activeTab === "console") {
+    scheduleConsoleRender();
+  }
+};
+
+const formatAgo = (iso) => {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const secs = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+};
+
+const getSelectionEntry = (appid) => {
+  const key = String(appid);
+  let entry = libraryState.selection.get(key);
+  if (!entry) {
+    entry = { selected: false, branch: "", branchPassword: "" };
+    libraryState.selection.set(key, entry);
+  }
+  return entry;
+};
+
+const defaultBranchFor = (app) => {
+  if (app.branches?.some((b) => b.name === "public")) return "public";
+  return app.branches?.[0]?.name || "public";
+};
+
+const filteredApps = () => {
+  const q = libraryState.filter.trim().toLowerCase();
+  if (!q) return libraryState.apps;
+  return libraryState.apps.filter(
+    (a) => a.name.toLowerCase().includes(q) || String(a.appid).includes(q),
+  );
+};
+
+const updateLibrarySelectionUI = () => {
+  let count = 0;
+  for (const entry of libraryState.selection.values()) {
+    if (entry.selected) count += 1;
+  }
+  if (librarySelectionCountEl) {
+    librarySelectionCountEl.textContent = `${count} selected`;
+  }
+  if (libraryAddButton) {
+    libraryAddButton.disabled = count === 0 || isQueueRunning();
+  }
+};
+
+const renderLibrary = () => {
+  if (!libraryListEl) return;
+  libraryListEl.innerHTML = "";
+
+  if (libraryState.loading || !libraryState.loaded) {
+    const empty = document.createElement("div");
+    empty.className = "library-empty";
+    empty.textContent = libraryState.loading
+      ? "Loading your library…"
+      : 'Click "Load My Library" to fetch the apps owned by your signed-in account.';
+    libraryListEl.appendChild(empty);
+    updateLibrarySelectionUI();
+    return;
+  }
+
+  const apps = filteredApps();
+  if (apps.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "library-empty";
+    empty.textContent = libraryState.apps.length
+      ? "No apps match your search."
+      : "No owned apps were found for this account.";
+    libraryListEl.appendChild(empty);
+    updateLibrarySelectionUI();
+    return;
+  }
+
+  for (const app of apps) {
+    const entry = getSelectionEntry(app.appid);
+    if (!entry.branch) entry.branch = defaultBranchFor(app);
+
+    const row = document.createElement("div");
+    row.className = "library-item";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = entry.selected;
+    checkbox.addEventListener("change", () => {
+      entry.selected = checkbox.checked;
+      updateLibrarySelectionUI();
+    });
+
+    const main = document.createElement("div");
+    main.className = "library-item-main";
+    const name = document.createElement("div");
+    name.className = "library-item-name";
+    name.textContent = app.name || `App ${app.appid}`;
+    const meta = document.createElement("div");
+    meta.className = "library-item-meta";
+    meta.textContent = `AppID ${app.appid} · ${app.type || "app"}`;
+    main.appendChild(name);
+    main.appendChild(meta);
+
+    const branchWrap = document.createElement("div");
+    branchWrap.className = "library-item-branch";
+
+    const branches =
+      app.branches && app.branches.length
+        ? app.branches
+        : [{ name: "public", pwdRequired: false }];
+
+    const select = document.createElement("select");
+    select.className = "library-branch-select";
+    for (const branch of branches) {
+      const option = document.createElement("option");
+      option.value = branch.name;
+      option.textContent = branch.pwdRequired
+        ? `🔒 ${branch.name}`
+        : branch.name;
+      if (branch.name === entry.branch) option.selected = true;
+      select.appendChild(option);
+    }
+
+    const pwInput = document.createElement("input");
+    pwInput.type = "password";
+    pwInput.className = "library-branch-password";
+    pwInput.placeholder = "Branch password";
+    pwInput.value = entry.branchPassword || "";
+
+    const branchByName = (n) => branches.find((b) => b.name === n);
+    const syncPwVisibility = () => {
+      const needs = Boolean(branchByName(entry.branch)?.pwdRequired);
+      pwInput.style.display = needs ? "" : "none";
+    };
+
+    select.addEventListener("change", () => {
+      entry.branch = select.value;
+      syncPwVisibility();
+    });
+    pwInput.addEventListener("input", () => {
+      entry.branchPassword = pwInput.value;
+    });
+    syncPwVisibility();
+
+    branchWrap.appendChild(select);
+    branchWrap.appendChild(pwInput);
+
+    const watched = libraryState.watched.has(String(app.appid));
+    const watchBtn = document.createElement("button");
+    watchBtn.type = "button";
+    watchBtn.className = `library-watch-toggle${watched ? " watched" : ""}`;
+    watchBtn.textContent = watched ? "★" : "☆";
+    watchBtn.title = watched
+      ? "Watching for updates — click to stop"
+      : "Watch this app for updates";
+    watchBtn.addEventListener("click", () => void toggleWatch(app));
+    branchWrap.appendChild(watchBtn);
+
+    row.appendChild(checkbox);
+    row.appendChild(main);
+    row.appendChild(branchWrap);
+    libraryListEl.appendChild(row);
+  }
+
+  updateLibrarySelectionUI();
+};
+
+const closeAuthModals = () => {
+  closeQrModal();
+  closeSteamGuardModal();
+  closeSteamGuardEmailModal();
+};
+
+const loadLibrary = async ({ force = false } = {}) => {
+  if (libraryState.loading) return;
+  if (!tauriInvoke) {
+    setLibraryStatus("Backend unavailable (run inside the app).");
+    return;
+  }
+  if (isQueueRunning()) {
+    setLibraryStatus("Cannot load the library while the queue is running.");
+    return;
+  }
+
+  const username = steamUsernameInput?.value?.trim() || "";
+  const password = steamPasswordInput?.value || "";
+  const qrEnabled = Boolean(qrLoginToggle?.checked);
+  if (!qrEnabled && !username) {
+    setLibraryStatus("Enter your Steam username (or enable QR login) first.");
+    return;
+  }
+
+  libraryState.loading = true;
+  setLibraryStatus(force ? "Refreshing from Steam…" : "Loading…");
+  renderLibrary();
+
+  enumState.active = true;
+  enumState.qrEnabled = qrEnabled;
+  enumState.qrCaptureActive = false;
+  enumState.qrCaptureLines = [];
+  enumState.qrText = null;
+  enumState.log = [];
+  enumState.showInConsole = true;
+  pushEnumLog(
+    `--- Library ${force ? "refresh" : "load"} (qr=${qrEnabled}, includeFree=${Boolean(
+      libraryIncludeFree?.checked,
+    )}) — see Console tab for live output ---`,
+  );
+
+  if (libraryLoadButton) libraryLoadButton.disabled = true;
+  if (libraryRefreshButton) libraryRefreshButton.disabled = true;
+
+  try {
+    const result = await tauriInvoke("enumerate_owned_apps", {
+      input: {
+        username,
+        password,
+        qrEnabled,
+        includeFree: Boolean(libraryIncludeFree?.checked),
+        force,
+      },
+    });
+    const apps = Array.isArray(result?.apps) ? result.apps : [];
+    libraryState.apps = apps
+      .slice()
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    libraryState.loaded = true;
+    libraryState.fetchedAt = result?.fetchedAt || null;
+    for (const app of libraryState.apps) {
+      const entry = getSelectionEntry(app.appid);
+      if (!entry.branch) entry.branch = defaultBranchFor(app);
+    }
+    const ago = result?.fetchedAt ? formatAgo(result.fetchedAt) : "";
+    const source = result?.fromCache
+      ? `cached · updated ${ago}${result?.stale ? " · stale — Refresh to update" : ""}`
+      : "fetched from Steam";
+    setLibraryStatus(`${libraryState.apps.length} apps · ${source}`);
+    pushEnumLog(`--- result: ${libraryState.apps.length} apps (${source}) ---`);
+  } catch (error) {
+    setLibraryStatus(`Failed to load library: ${error}`);
+    pushEnumLog(`--- error: ${error} ---`);
+  } finally {
+    libraryState.loading = false;
+    enumState.active = false;
+    closeAuthModals();
+    if (libraryLoadButton) libraryLoadButton.disabled = false;
+    if (libraryRefreshButton) libraryRefreshButton.disabled = false;
+    if (librarySearch) librarySearch.disabled = !libraryState.loaded;
+    renderLibrary();
+  }
+};
+
+const addSelectedToQueue = () => {
+  const os = osSelect?.value || "Windows x64";
+  const username = steamUsernameInput?.value?.trim() || "";
+  const password = steamPasswordInput?.value || "";
+  const qrEnabled = Boolean(qrLoginToggle?.checked);
+
+  let added = 0;
+  for (const app of libraryState.apps) {
+    const entry = libraryState.selection.get(String(app.appid));
+    if (!entry?.selected) continue;
+    const job = createJob({
+      appId: String(app.appid),
+      os,
+      branch: entry.branch || "public",
+      branchPassword: entry.branchPassword || "",
+      username,
+      password,
+      qrEnabled,
+    });
+    job.status = "queued";
+    entry.selected = false;
+    added += 1;
+  }
+
+  if (added > 0) {
+    setLibraryStatus(`Added ${added} app(s) to the queue.`);
+    setActiveTab("queue");
+    renderAll();
+  }
+  renderLibrary();
+};
+
+if (libraryLoadButton) {
+  libraryLoadButton.addEventListener("click", () => void loadLibrary());
+}
+if (libraryRefreshButton) {
+  libraryRefreshButton.addEventListener("click", () =>
+    void loadLibrary({ force: true }),
+  );
+}
+if (librarySearch) {
+  librarySearch.addEventListener("input", () => {
+    libraryState.filter = librarySearch.value;
+    renderLibrary();
+  });
+}
+if (libraryAddButton) {
+  libraryAddButton.addEventListener("click", addSelectedToQueue);
+}
+if (watchEnabledToggle) {
+  watchEnabledToggle.addEventListener("change", () => void applyWatchSettings());
+}
+if (watchIntervalInput) {
+  watchIntervalInput.addEventListener("change", () => void applyWatchSettings());
+}
+
+// Enumeration login events: reuse the QR / Steam Guard modals via the enum
+// pseudo-job, and surface progress in the library status line.
+if (tauriEvent?.listen) {
+  tauriEvent.listen("enum:log", (event) => {
+    if (!enumState.active) return;
+    const payload = event.payload ?? {};
+    const line = payload.line ?? "";
+
+    pushEnumLog(`[${payload.stream || "dd"}] ${line}`);
+
+    // No password field exists in the Library flow; if DepotDownloader falls back
+    // to prompting for one on stdin, abort instead of hanging forever.
+    if (line.includes("Enter account password for")) {
+      setLibraryStatus(
+        "Enter your Steam password (or enable QR login) and load again.",
+      );
+      void tauriInvoke?.("cancel_enumeration");
+      return;
+    }
+
+    updateQrCapture(enumState, payload);
+    if (enumState.qrEnabled && qrLoginSuccessMatches(line)) {
+      closeQrModal();
+    }
+    if (steamGuardPromptMatches(line)) {
+      openSteamGuardModal();
+    }
+    if (steamGuardConfirmedMatches(line)) {
+      closeSteamGuardModal();
+    }
+    if (steamGuardEmailPromptMatches(line)) {
+      openSteamGuardEmailModal(line, null);
+    }
+  });
+
+  tauriEvent.listen("enum:progress", (event) => {
+    if (!enumState.active) return;
+    const message = event.payload?.message ?? "";
+    if (message) {
+      setLibraryStatus(`Working… ${message}`);
+      pushEnumLog(`[progress] ${message}`);
+    }
+  });
+
+  tauriEvent.listen("update:available", (event) => {
+    const u = event.payload ?? {};
+    // De-dupe by appid+buildId so repeated polls don't stack entries.
+    const exists = updatesState.items.some(
+      (i) => i.appid === u.appid && i.buildId === u.buildId,
+    );
+    if (!exists) {
+      updatesState.items.unshift(u);
+      renderUpdatesBanner();
+    }
+  });
+
+  tauriEvent.listen("watch:error", (event) => {
+    console.debug("[OmniPacker] watch error:", event.payload);
+  });
+}
+
+renderLibrary();
+renderUpdatesBanner();
+void loadWatchConfig();
 
 function applyUiScale() {
   const scale = Math.min(
