@@ -31,5 +31,7 @@ AGENTS.md
 # Build output
 release/
 
-# Vendored sidecars are built locally (scripts/rebuild-depotdownloader.ps1)
-src-tauri/binaries/
+# DepotDownloader sidecars are large and built locally
+# (scripts/rebuild-depotdownloader.ps1). The small 7-Zip binaries stay tracked.
+src-tauri/binaries/*/DepotDownloader
+src-tauri/binaries/*/DepotDownloader.exe
