@@ -67,6 +67,10 @@ struct RunningJobState {
     auth_username: Option<String>,
     // Track depot names from preflight (depot_id -> depot_name)
     depot_names: std::collections::HashMap<String, String>,
+    // The app's real install-directory name (appinfo "installdir"), captured from
+    // the fork's OMNIPACKER_INSTALLDIR marker during preflight or download. This is
+    // the exact folder name the Steam client uses under steamapps/common.
+    install_dir: Option<String>,
     // Track depot dlcappids from DepotDownloader output (depot_id -> dlcappid)
     depot_dlcappids: std::collections::HashMap<String, String>,
     // Join handles for log reader threads (to ensure all logs are parsed before metadata derivation)
@@ -92,6 +96,7 @@ impl DepotRunnerState {
                 last_depot_mentioned: None,
                 auth_username: None,
                 depot_names: std::collections::HashMap::new(),
+                install_dir: None,
                 depot_dlcappids: std::collections::HashMap::new(),
                 log_reader_threads: None,
             })),
@@ -346,14 +351,22 @@ fn derive_metadata_from_download(
         return Err("No depots found in download".to_string());
     }
 
-    // Retrieve parsed manifest-to-depot mappings, depot names, and dlcappids from download log output
-    let (parsed_manifest_to_depot, preflight_depot_names, parsed_dlcappids) = {
+    // Retrieve parsed manifest-to-depot mappings, depot names, dlcappids, and the
+    // real install-dir name from download log output
+    let (parsed_manifest_to_depot, preflight_depot_names, parsed_dlcappids, captured_install_dir) = {
         app_handle
             .state::<DepotRunnerState>()
             .inner
             .lock()
             .ok()
-            .map(|guard| (guard.manifest_to_depot.clone(), guard.depot_names.clone(), guard.depot_dlcappids.clone()))
+            .map(|guard| {
+                (
+                    guard.manifest_to_depot.clone(),
+                    guard.depot_names.clone(),
+                    guard.depot_dlcappids.clone(),
+                    guard.install_dir.clone(),
+                )
+            })
             .unwrap_or_default()
     };
 
@@ -458,7 +471,7 @@ fn derive_metadata_from_download(
     }
 
     // Create job metadata
-    let job_metadata = JobMetadataFile::new(
+    let mut job_metadata = JobMetadataFile::new(
         job_id.to_string(),
         job.app_id.clone(),
         branch_normalized,
@@ -470,6 +483,7 @@ fn derive_metadata_from_download(
         build_datetime_utc,
         depots,
     );
+    job_metadata.install_dir = captured_install_dir;
 
     // Write job.json
     job_metadata.write_to_dir(staging_dir)?;
@@ -1782,6 +1796,12 @@ fn run_preflight_before_download(
                     guard.depot_names.insert(depot.depot_id, name);
                 }
             }
+
+            if guard.install_dir.is_none() {
+                if let Some(dir) = parsed.install_dir {
+                    guard.install_dir = Some(dir);
+                }
+            }
         }
     }
 
@@ -2016,6 +2036,18 @@ fn maybe_store_build_datetime(app_handle: &AppHandle, line: &str, job_id: &str) 
     if let Ok(mut guard) = app_handle.state::<DepotRunnerState>().inner.lock() {
         if guard.job_id.as_deref() != Some(job_id) {
             return;
+        }
+
+        // Capture the app's real install-directory name (the folder Steam itself
+        // uses), emitted once per app by the fork's OMNIPACKER_INSTALLDIR marker.
+        if guard.install_dir.is_none() {
+            if let Some((_, rest)) = line.split_once("OMNIPACKER_INSTALLDIR ") {
+                let dir = rest.trim();
+                if !dir.is_empty() {
+                    guard.install_dir = Some(dir.to_string());
+                    return;
+                }
+            }
         }
 
         // Track depot names: Depot 12345 "Depot Name"

@@ -27,6 +27,10 @@ pub struct PreflightResult {
     pub build_id: Option<String>,
     /// Build release datetime if found in output
     pub build_datetime_utc: Option<DateTime<Utc>>,
+    /// The app's real install-directory name (appinfo "installdir"), as emitted
+    /// by the fork's OMNIPACKER_INSTALLDIR marker. This is exactly the folder name
+    /// the Steam client uses under steamapps/common.
+    pub install_dir: Option<String>,
     /// Raw output lines for debugging
     #[allow(dead_code)] // Captured but not currently used; kept for debugging/future use
     pub raw_output: Vec<String>,
@@ -103,6 +107,7 @@ pub fn parse_preflight_output(lines: &[String]) -> PreflightResult {
     let mut primary_depot_id: Option<String> = None;
     let mut build_id: Option<String> = None;
     let mut build_datetime_utc: Option<DateTime<Utc>> = None;
+    let install_dir: Option<String> = parse_installdir_marker(lines);
 
     // Patterns to match depot/manifest info from DD output
     // Example patterns:
@@ -345,8 +350,21 @@ pub fn parse_preflight_output(lines: &[String]) -> PreflightResult {
         primary_depot_id,
         build_id,
         build_datetime_utc,
+        install_dir,
         raw_output: lines.to_vec(),
     }
+}
+
+/// Extracts the app's real install-directory name from the fork's
+/// `OMNIPACKER_INSTALLDIR <name>` marker line, if present. The last occurrence
+/// wins (a download/preflight emits it once per app).
+pub fn parse_installdir_marker(lines: &[String]) -> Option<String> {
+    const MARKER: &str = "OMNIPACKER_INSTALLDIR ";
+    lines
+        .iter()
+        .rev()
+        .find_map(|line| line.split_once(MARKER).map(|(_, rest)| rest.trim().to_string()))
+        .filter(|s| !s.is_empty())
 }
 
 fn parse_epoch_timestamp(value: Option<&str>) -> Option<DateTime<Utc>> {
@@ -407,6 +425,23 @@ mod tests {
         assert_eq!(result.depots.len(), 2);
         assert_eq!(result.depots[0].depot_id, "123456");
         assert_eq!(result.depots[0].manifest_id, "9876543210987654321");
+    }
+
+    #[test]
+    fn test_parse_installdir_marker() {
+        // Names with spaces survive intact; the marker value is the Steam installdir.
+        let lines = vec![
+            "Using app branch: 'public'.".to_string(),
+            "OMNIPACKER_INSTALLDIR Mega Man 11".to_string(),
+        ];
+        assert_eq!(
+            parse_preflight_output(&lines).install_dir.as_deref(),
+            Some("Mega Man 11")
+        );
+
+        // Absent marker => None (finalization falls back to the game name).
+        let none = vec!["Depot 1 - Manifest 2".to_string()];
+        assert_eq!(parse_preflight_output(&none).install_dir, None);
     }
 
     #[test]

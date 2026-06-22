@@ -67,6 +67,11 @@ pub struct JobMetadataFile {
     /// Build release datetime (UTC) if available
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build_datetime_utc: Option<DateTime<Utc>>,
+    /// The app's real install-directory name (appinfo "installdir") — the exact
+    /// folder name the Steam client uses under steamapps/common. When present it
+    /// is used verbatim for the output folder and the `.acf` installdir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_dir: Option<String>,
     /// List of depots included in this job
     pub depots: Vec<DepotInfo>,
     /// Timestamp when appinfo was fetched
@@ -100,6 +105,7 @@ impl JobMetadataFile {
             build_id,
             build_id_source,
             build_datetime_utc,
+            install_dir: None,
             depots,
             appinfo_fetched_at: Utc::now(),
             metadata_version: Some(METADATA_VERSION.to_string()),

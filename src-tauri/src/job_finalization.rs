@@ -191,25 +191,33 @@ fn build_temp_output(
         .map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     // Determine installdir: must match the on-disk folder name that all non-shared depot
-    // files will be merged into. Use the game's display name (kept intact, like a real
-    // Steam install dir — "Turnbound", not the depot label "Turnbound - windows"). Fall
-    // back to the primary depot name, then the appid, if the game name sanitizes to empty.
-    // Sanitizing strips only path-illegal characters so the same value is safe on Windows
-    // and matches the `.acf` installdir exactly.
-    let install_dir_name = {
-        let from_game = sanitize_install_dir(&metadata.game_name);
-        if !from_game.is_empty() {
-            from_game
-        } else {
+    // files will be merged into. Prefer the app's real install-dir name (captured from
+    // appinfo) — this is exactly the folder Steam itself uses under steamapps/common.
+    // Fall back to the game's display name, then the primary depot name, then the appid.
+    // Sanitizing strips only path-illegal characters so the value is safe on Windows and
+    // matches the `.acf` installdir exactly.
+    let install_dir_name = metadata
+        .install_dir
+        .as_deref()
+        .map(sanitize_install_dir)
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            let from_game = sanitize_install_dir(&metadata.game_name);
+            if from_game.is_empty() {
+                None
+            } else {
+                Some(from_game)
+            }
+        })
+        .or_else(|| {
             metadata
                 .depots
                 .iter()
                 .find(|d| d.depot_id == metadata.primary_depot_id)
                 .map(|d| sanitize_install_dir(&d.depot_name))
                 .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| metadata.appid.clone())
-        }
-    };
+        })
+        .unwrap_or_else(|| metadata.appid.clone());
 
     // Compute per-depot sizes from the staging structure BEFORE the merge.
     // After merge, all non-shared depot files live in one folder and individual sizes
