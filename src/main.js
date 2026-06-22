@@ -4226,9 +4226,16 @@ const bbcodeToHtml = (raw) => {
     /\[img\]([\s\S]*?)\[\/img\]/gi,
     (_m, src) => `<span class="bb-link" title="${src.replace(/"/g, "&quot;")}">[image]</span>`,
   );
-  s = s.replace(/\[\*\]\s?/gi, "• ");
-  s = s.replace(/\[\/?[a-z][^\]]*\]/gi, "");
+  // List items: Steam closes each with [/*], so handle both ends and put each
+  // bullet on its own line.
+  s = s.replace(/\[\/\*\]/gi, "");
+  s = s.replace(/\[\*\]\s*/gi, "<br>• ");
+  s = s.replace(/\[\/?(list|olist)\]/gi, "");
+  // Strip any remaining tags (alpha, or stray symbol/numeric ones like [/*]).
+  s = s.replace(/\[\/?[a-z0-9*][^\]]*\]/gi, "");
   s = s.replace(/\r?\n/g, "<br>");
+  // Collapse runs of blank lines left behind by stripped tags.
+  s = s.replace(/(<br>\s*){3,}/g, "<br><br>");
   return s;
 };
 
