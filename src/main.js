@@ -2980,6 +2980,7 @@ const startJob = async () => {
   applyRememberedAuth(jobToRun);
   jobState.runningJobId = jobToRun.id;
   jobState.selectedJobId = jobToRun.id;
+  enumState.showInConsole = false; // hand the Console to the running download
   renderAll();
 
   if (jobToRun.qrEnabled) {
@@ -3372,8 +3373,9 @@ const renderConsole = (force = false) => {
   }
 
   // Library (owned-app enumeration) has no queue job, so surface its live log
-  // here as the debug view until the user selects a queue job.
-  if (enumState.showInConsole) {
+  // here as the debug view — but never over a running download, whose logs take
+  // priority in the Console.
+  if (enumState.showInConsole && !jobState.runningJobId) {
     consoleOutput.value = enumState.log.length
       ? enumState.log.join("\n")
       : "Library: waiting for DepotDownloader output…";
