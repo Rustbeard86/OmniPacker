@@ -4384,6 +4384,13 @@ const escapeHtml = (s) =>
 
 // Minimal Steam BBCode -> safe HTML (input is escaped first, only known tags
 // are reintroduced, external images become labels since the CSP blocks them).
+// Removes BBCode tags from a fragment (used for spoiler titles etc.).
+const stripBbTags = (s) =>
+  String(s ?? "")
+    .replace(/\[\/?[a-z0-9*][^\]]*\]/gi, "")
+    .replace(/^"+|"+$/g, "")
+    .trim();
+
 const bbcodeToHtml = (raw) => {
   let s = escapeHtml(raw);
   s = s.replace(/\[h1\]([\s\S]*?)\[\/h1\]/gi, "<h3>$1</h3>");
@@ -4392,10 +4399,18 @@ const bbcodeToHtml = (raw) => {
   s = s.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, "<strong>$1</strong>");
   s = s.replace(/\[i\]([\s\S]*?)\[\/i\]/gi, "<em>$1</em>");
   s = s.replace(/\[u\]([\s\S]*?)\[\/u\]/gi, "<u>$1</u>");
-  s = s.replace(/\[strike\]([\s\S]*?)\[\/strike\]/gi, "<s>$1</s>");
+  s = s.replace(/\[(?:s|strike)\]([\s\S]*?)\[\/(?:s|strike)\]/gi, "<s>$1</s>");
   s = s.replace(/\[quote[^\]]*\]([\s\S]*?)\[\/quote\]/gi, "<blockquote>$1</blockquote>");
-  s = s.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, "<pre>$1</pre>");
-  s = s.replace(/\[spoiler\]([\s\S]*?)\[\/spoiler\]/gi, "$1");
+  // Code (with optional =lang) -> run code before spoiler so nested code wraps.
+  s = s.replace(/\[code(?:=[^\]]*)?\]([\s\S]*?)\[\/code\]/gi, "<pre>$1</pre>");
+  // Spoiler (with optional =title) -> labeled block.
+  s = s.replace(
+    /\[spoiler(?:=([^\]]*))?\]([\s\S]*?)\[\/spoiler\]/gi,
+    (_m, title, body) => {
+      const label = title ? stripBbTags(title) : "Spoiler";
+      return `<div class="bb-spoiler"><div class="bb-spoiler-title">${label}</div>${body}</div>`;
+    },
+  );
   s = s.replace(
     /\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi,
     (_m, href, txt) => `<span class="bb-link" title="${href.replace(/"/g, "&quot;")}">${txt}</span>`,
@@ -4405,15 +4420,19 @@ const bbcodeToHtml = (raw) => {
     /\[img\]([\s\S]*?)\[\/img\]/gi,
     (_m, src) => `<span class="bb-link" title="${src.replace(/"/g, "&quot;")}">[image]</span>`,
   );
-  // List items: Steam closes each with [/*], so handle both ends and put each
-  // bullet on its own line.
+  // List items: Steam closes each with [/*].
   s = s.replace(/\[\/\*\]/gi, "");
   s = s.replace(/\[\*\]\s*/gi, "<br>• ");
-  s = s.replace(/\[\/?(list|olist)\]/gi, "");
-  // Strip any remaining tags (alpha, or stray symbol/numeric ones like [/*]).
-  s = s.replace(/\[\/?[a-z0-9*][^\]]*\]/gi, "");
+  // Strip only KNOWN formatting tags (with optional =value). Crucially this
+  // leaves literal bracketed text like [Win64], [Branch: Public] or
+  // [Manifest 123] intact instead of mistaking them for tags.
+  const KNOWN_TAGS =
+    "b|i|u|s|strike|color|size|list|olist|ulist|quote|code|spoiler|center|left|right|table|tr|td|th|h[1-6]|noparse|sub|sup|previewyoutube|steam|hr";
+  s = s.replace(
+    new RegExp(`\\[\\/?(?:${KNOWN_TAGS})(?:=[^\\]]*)?\\]`, "gi"),
+    "",
+  );
   s = s.replace(/\r?\n/g, "<br>");
-  // Collapse runs of blank lines left behind by stripped tags.
   s = s.replace(/(<br>\s*){3,}/g, "<br><br>");
   return s;
 };

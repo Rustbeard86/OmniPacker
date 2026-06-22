@@ -1278,3 +1278,16 @@ input:disabled {
   font-size: 11px;
   opacity: 0.9;
 }
+
+.bb-spoiler {
+  border: 1px solid #505050;
+  border-radius: 3px;
+  padding: 6px 8px;
+  margin: 0.4em 0;
+}
+
+.bb-spoiler-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  opacity: 0.9;
+}
