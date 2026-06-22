@@ -624,19 +624,23 @@ fn build_depot_args(job: &JobMetadata) -> Result<Vec<String>, String> {
     args.push("-osarch".to_string());
     args.push(arch.to_string());
 
-    if job.qr_enabled {
-        args.push("-qr".to_string());
-    } else if !job.username.is_empty() {
+    // Prefer the username + saved token so a durable session is reused; QR is a
+    // fallback only when there's no username. Always `-remember-password` so the
+    // login is persistent and the token isn't clobbered by a throwaway one.
+    let username = job.username.trim();
+    if !username.is_empty() {
         args.push("-username".to_string());
-        args.push(job.username.clone());
-
+        args.push(username.to_string());
         if !job.password.is_empty() {
             args.push("-password".to_string());
             args.push(job.password.clone());
         }
         args.push("-remember-password".to_string());
+    } else if job.qr_enabled {
+        args.push("-qr".to_string());
+        args.push("-remember-password".to_string());
     }
-    // If both username and password are empty, attempt anonymous download (no auth args)
+    // If both username and QR are absent, attempt anonymous download (no auth args)
 
     Ok(args)
 }

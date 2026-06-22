@@ -30,6 +30,7 @@ const compressionPasswordInput = document.getElementById(
 );
 const customCompressionArgsInput = document.getElementById("custom-compression-args");
 const defaultQrToggle = document.getElementById("default-qr-toggle");
+const tokenLoginToggle = document.getElementById("token-login-toggle");
 const languageSelect = document.getElementById("language-select");
 const saveLoginButton = document.querySelector(".save-login-button");
 const deleteLoginButton = document.querySelector(".settings-delete-login-button");
@@ -91,6 +92,7 @@ const settingsState = {
   compressionPassword: "",
   customCompressionArgs: "",
   defaultQrLogin: false,
+  tokenLogin: false,
   language: "en",
   defaultTemplate: null,
   lastTemplateSaveDir: null,
@@ -233,6 +235,7 @@ const translations = {
     "settings.customCompressionArgsHint":
       "Extra flags passed to 7-Zip. OmniPacker auto-tunes -mmt and -md for your system; overriding them may cause issues. Flags -t, -p, and -bsp are not allowed.",
     "settings.defaultQrLogin": "Default to QR Login",
+    "settings.tokenLogin": "Token login (reuse saved session)",
     "settings.deleteLogin": "Delete Saved Login Data",
     "settings.deleteNotImplemented": "This feature is not yet implemented.",
     "template.button": "Template Editor",
@@ -1904,6 +1907,9 @@ const loadSettings = () => {
       if (typeof parsed.defaultQrLogin === "boolean") {
         settingsState.defaultQrLogin = parsed.defaultQrLogin;
       }
+      if (typeof parsed.tokenLogin === "boolean") {
+        settingsState.tokenLogin = parsed.tokenLogin;
+      }
       if (typeof parsed.language === "string") {
         settingsState.language = parsed.language;
       }
@@ -1968,6 +1974,9 @@ const applySettingsToUI = () => {
   }
   if (defaultQrToggle) {
     defaultQrToggle.checked = settingsState.defaultQrLogin;
+  }
+  if (tokenLoginToggle) {
+    tokenLoginToggle.checked = settingsState.tokenLogin;
   }
   if (languageSelect) {
     languageSelect.value = settingsState.language;
@@ -3640,6 +3649,14 @@ if (defaultQrToggle) {
   });
 }
 
+if (tokenLoginToggle) {
+  tokenLoginToggle.addEventListener("change", () => {
+    settingsState.tokenLogin = tokenLoginToggle.checked;
+    saveSettings();
+    libraryControlsUpdater?.();
+  });
+}
+
 if (languageSelect) {
   languageSelect.addEventListener("change", () => {
     settingsState.language = languageSelect.value;
@@ -3691,27 +3708,41 @@ const watchIntervalInput = document.getElementById("watch-interval-input");
 
 const LIBRARY_CRED_HINT =
   "Sign in first: on the Queue tab, enter your Steam username + password (or enable QR login).";
+const LIBRARY_TOKEN_HINT =
+  "Token login: enter your Steam username on the Queue tab. A saved session is required — if it has expired, turn off Token login and sign in once with password or QR.";
 
-// Minimum to authenticate an enumeration: QR, or a username AND password
-// (a saved login populates both, so this also covers the saved-login case).
-const libraryCredsOk = () =>
-  Boolean(qrLoginToggle?.checked) ||
-  Boolean((steamUsernameInput?.value || "").trim() && (steamPasswordInput?.value || ""));
+const libraryCredHint = () =>
+  settingsState.tokenLogin ? LIBRARY_TOKEN_HINT : LIBRARY_CRED_HINT;
+
+// Minimum to authenticate an enumeration. In token-login mode a username alone
+// is enough (it reuses the saved session); otherwise QR, or username + password
+// (a saved login populates both, covering that case).
+const libraryCredsOk = () => {
+  const username = (steamUsernameInput?.value || "").trim();
+  if (settingsState.tokenLogin) {
+    return Boolean(username);
+  }
+  return (
+    Boolean(qrLoginToggle?.checked) ||
+    Boolean(username && (steamPasswordInput?.value || ""))
+  );
+};
 
 const updateLibraryControls = () => {
   const ok = libraryCredsOk();
   const busy = libraryState.loading || isQueueRunning();
+  const hint = libraryCredHint();
   if (libraryLoadButton) {
     libraryLoadButton.disabled = !ok || busy;
-    libraryLoadButton.title = ok ? "" : LIBRARY_CRED_HINT;
+    libraryLoadButton.title = ok ? "" : hint;
   }
   if (libraryRefreshButton) {
     libraryRefreshButton.disabled = !ok || busy;
-    libraryRefreshButton.title = ok ? "" : LIBRARY_CRED_HINT;
+    libraryRefreshButton.title = ok ? "" : hint;
   }
   if (libraryCredHintEl) {
     libraryCredHintEl.hidden = ok;
-    libraryCredHintEl.textContent = ok ? "" : LIBRARY_CRED_HINT;
+    libraryCredHintEl.textContent = ok ? "" : hint;
   }
 };
 
@@ -3923,7 +3954,7 @@ const renderLibrary = () => {
       ? "Loading your library…"
       : libraryCredsOk()
         ? 'Click "Load My Library" to fetch the apps owned by your signed-in account.'
-        : LIBRARY_CRED_HINT;
+        : libraryCredHint();
     libraryListEl.appendChild(empty);
     updateLibrarySelectionUI();
     return;
@@ -4082,7 +4113,7 @@ const loadLibrary = async ({ force = false } = {}) => {
   }
 
   if (!libraryCredsOk()) {
-    setLibraryStatus(LIBRARY_CRED_HINT);
+    setLibraryStatus(libraryCredHint());
     updateLibraryControls();
     return;
   }

@@ -58,20 +58,22 @@ pub fn build_preflight_args(job: &JobMetadata) -> Result<Vec<String>, String> {
     args.push("-osarch".to_string());
     args.push(arch.to_string());
 
-    // Authentication
-    if job.qr_enabled {
-        args.push("-qr".to_string());
-    } else if !job.username.is_empty() {
+    // Authentication — prefer username + saved token; QR fallback; always persist.
+    let username = job.username.trim();
+    if !username.is_empty() {
         args.push("-username".to_string());
-        args.push(job.username.clone());
+        args.push(username.to_string());
 
         if !job.password.is_empty() {
             args.push("-password".to_string());
             args.push(job.password.clone());
         }
         args.push("-remember-password".to_string());
+    } else if job.qr_enabled {
+        args.push("-qr".to_string());
+        args.push("-remember-password".to_string());
     }
-    // If both username and password are empty, attempt anonymous download (no auth args)
+    // If both username and QR are absent, attempt anonymous download (no auth args)
 
     Ok(args)
 }
