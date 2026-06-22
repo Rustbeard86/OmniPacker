@@ -229,21 +229,25 @@ fn build_enum_args(input: &EnumerateInput) -> Vec<String> {
     }
 
     let username = input.username.trim();
+    let mut authed = false;
     if !username.is_empty() {
-        // Prefer credential/token login so saved credentials are reused without
-        // re-scanning a QR code on every run. `-remember-password` persists the
-        // login token in the stable enumeration working dir, so after the first
-        // login (password or QR) later runs are silent. Falls back to a stored
-        // token when no password is given.
+        // Username (with `-remember-password`) makes DepotDownloader reuse the
+        // saved refresh token and log in silently. A QR flag can ride alongside:
+        // the token is used when valid, and QR only appears when there's no
+        // usable token — so it doubles as the recovery path on expiry.
         args.push("-username".to_string());
         args.push(username.to_string());
         if !input.password.is_empty() {
             args.push("-password".to_string());
             args.push(input.password.clone());
         }
-        args.push("-remember-password".to_string());
-    } else if input.qr_enabled {
+        authed = true;
+    }
+    if input.qr_enabled {
         args.push("-qr".to_string());
+        authed = true;
+    }
+    if authed {
         args.push("-remember-password".to_string());
     }
     // Empty username + no QR => anonymous, which the fork rejects with a clear

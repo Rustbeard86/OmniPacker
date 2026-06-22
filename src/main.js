@@ -2103,33 +2103,31 @@ const applyRememberedAuth = (job) => {
     return;
   }
   // If we know the account name from an earlier login and the user hasn't typed a
-  // different one this time, reuse it (no QR). DepotDownloader will pick up the
-  // saved refresh token and log in silently.
+  // different one this time, attach it so DepotDownloader reuses the saved token
+  // and signs in silently. Leave the QR flag as-is: it stays available as the
+  // fallback for when the saved token has expired.
   const typed = (job.username || "").trim();
   if (!authState.rememberedUsername) {
     return;
   }
   if (!typed || typed === authState.rememberedUsername) {
-    const wasQr = job.qrEnabled;
-    job.qrEnabled = false;
     job.username = authState.rememberedUsername;
-    if (wasQr) {
-      job.password = "";
-    }
     job.rememberPassword = true;
     pushJobLog(job, t("auth.reuseQr", { username: authState.rememberedUsername }));
   }
 };
 
-// Single source of truth for the auth args every operation sends. If we have a
-// known account name (typed now, saved login, or remembered from a past login)
-// we use username + saved-token reuse and skip QR; QR is only for a genuine
-// first login where no account name is known yet.
+// Single source of truth for the auth args every operation sends. We always pass
+// the known account name (typed now, saved login, or remembered from a past
+// login) so DepotDownloader reuses the saved token and signs in silently. The QR
+// toggle still rides along: the token is used when valid, and QR only appears
+// when there's no usable token — so it also recovers a login after the token
+// expires without dead-ending.
 const resolveAuthInputs = () => {
   const typed = (steamUsernameInput?.value || "").trim();
   const username = typed || authState.rememberedUsername || "";
   const password = steamPasswordInput?.value || "";
-  const qrEnabled = username ? false : Boolean(qrLoginToggle?.checked);
+  const qrEnabled = Boolean(qrLoginToggle?.checked);
   return { username, password, qrEnabled };
 };
 
