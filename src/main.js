@@ -3905,6 +3905,14 @@ const renderLibrary = () => {
     configBtn.addEventListener("click", () => void openAppConfig(app));
     branchWrap.appendChild(configBtn);
 
+    const notesBtn = document.createElement("button");
+    notesBtn.type = "button";
+    notesBtn.className = "library-notes-button";
+    notesBtn.textContent = "📝";
+    notesBtn.title = "Patch notes / recent updates";
+    notesBtn.addEventListener("click", () => void openPatchNotes(app));
+    branchWrap.appendChild(notesBtn);
+
     row.appendChild(checkbox);
     row.appendChild(main);
     row.appendChild(branchWrap);
@@ -4178,6 +4186,116 @@ if (appConfigCloseBtn) appConfigCloseBtn.addEventListener("click", closeAppConfi
 if (appConfigOverlay) {
   appConfigOverlay.addEventListener("click", (e) => {
     if (e.target === appConfigOverlay) closeAppConfig();
+  });
+}
+
+// ----- Patch notes modal -----
+const patchNotesOverlay = document.querySelector(".patch-notes-overlay");
+const patchNotesTitle = document.querySelector(".patch-notes-title");
+const patchNotesList = document.querySelector(".patch-notes-list");
+const patchNotesContent = document.querySelector(".patch-notes-content");
+const patchNotesStatus = document.querySelector(".patch-notes-status");
+const patchNotesCloseBtn = document.querySelector(".patch-notes-close");
+
+const escapeHtml = (s) =>
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+// Minimal Steam BBCode -> safe HTML (input is escaped first, only known tags
+// are reintroduced, external images become labels since the CSP blocks them).
+const bbcodeToHtml = (raw) => {
+  let s = escapeHtml(raw);
+  s = s.replace(/\[h1\]([\s\S]*?)\[\/h1\]/gi, "<h3>$1</h3>");
+  s = s.replace(/\[h2\]([\s\S]*?)\[\/h2\]/gi, "<h4>$1</h4>");
+  s = s.replace(/\[h3\]([\s\S]*?)\[\/h3\]/gi, "<h5>$1</h5>");
+  s = s.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, "<strong>$1</strong>");
+  s = s.replace(/\[i\]([\s\S]*?)\[\/i\]/gi, "<em>$1</em>");
+  s = s.replace(/\[u\]([\s\S]*?)\[\/u\]/gi, "<u>$1</u>");
+  s = s.replace(/\[strike\]([\s\S]*?)\[\/strike\]/gi, "<s>$1</s>");
+  s = s.replace(/\[quote[^\]]*\]([\s\S]*?)\[\/quote\]/gi, "<blockquote>$1</blockquote>");
+  s = s.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, "<pre>$1</pre>");
+  s = s.replace(/\[spoiler\]([\s\S]*?)\[\/spoiler\]/gi, "$1");
+  s = s.replace(
+    /\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi,
+    (_m, href, txt) => `<span class="bb-link" title="${href.replace(/"/g, "&quot;")}">${txt}</span>`,
+  );
+  s = s.replace(/\[url\]([\s\S]*?)\[\/url\]/gi, (_m, href) => `<span class="bb-link">${href}</span>`);
+  s = s.replace(
+    /\[img\]([\s\S]*?)\[\/img\]/gi,
+    (_m, src) => `<span class="bb-link" title="${src.replace(/"/g, "&quot;")}">[image]</span>`,
+  );
+  s = s.replace(/\[\*\]\s?/gi, "• ");
+  s = s.replace(/\[\/?[a-z][^\]]*\]/gi, "");
+  s = s.replace(/\r?\n/g, "<br>");
+  return s;
+};
+
+const fmtNewsDate = (epochSecs) => {
+  const t = Number(epochSecs) * 1000;
+  if (!Number.isFinite(t) || t <= 0) return "";
+  return new Date(t).toLocaleDateString();
+};
+
+const showPatchNote = (item, btn) => {
+  patchNotesList
+    ?.querySelectorAll(".patch-notes-item.active")
+    .forEach((e) => e.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  if (patchNotesContent) {
+    patchNotesContent.innerHTML = item ? bbcodeToHtml(item.contents) : "";
+    patchNotesContent.scrollTop = 0;
+  }
+};
+
+const openPatchNotes = async (app) => {
+  if (!tauriInvoke) return;
+  if (patchNotesTitle) {
+    patchNotesTitle.textContent = `Patch Notes — ${app.name || `App ${app.appid}`}`;
+  }
+  if (patchNotesList) patchNotesList.innerHTML = "";
+  if (patchNotesContent) patchNotesContent.innerHTML = "";
+  if (patchNotesStatus) patchNotesStatus.textContent = "Loading…";
+  patchNotesOverlay?.classList.add("active");
+
+  try {
+    const result = await tauriInvoke("get_app_news", { appid: app.appid, count: 15 });
+    const items = result?.items || [];
+    if (items.length === 0) {
+      if (patchNotesStatus) patchNotesStatus.textContent = "No news found for this app.";
+      return;
+    }
+    items.forEach((item, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "patch-notes-item";
+      const title = document.createElement("span");
+      title.textContent = item.title || "(untitled)";
+      const date = document.createElement("span");
+      date.className = "date";
+      date.textContent = [fmtNewsDate(item.date), item.feedlabel]
+        .filter(Boolean)
+        .join(" · ");
+      btn.appendChild(title);
+      btn.appendChild(date);
+      btn.addEventListener("click", () => showPatchNote(item, btn));
+      patchNotesList?.appendChild(btn);
+      if (idx === 0) showPatchNote(item, btn);
+    });
+    if (patchNotesStatus) {
+      patchNotesStatus.textContent = `${items.length} items · ${result?.fromCache ? "cached" : "fetched"}`;
+    }
+  } catch (error) {
+    if (patchNotesStatus) patchNotesStatus.textContent = `Failed to load news: ${error}`;
+  }
+};
+
+const closePatchNotes = () => patchNotesOverlay?.classList.remove("active");
+if (patchNotesCloseBtn) patchNotesCloseBtn.addEventListener("click", closePatchNotes);
+if (patchNotesOverlay) {
+  patchNotesOverlay.addEventListener("click", (e) => {
+    if (e.target === patchNotesOverlay) closePatchNotes();
   });
 }
 

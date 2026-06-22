@@ -13,6 +13,7 @@ pub(crate) mod output_dir;
 mod owned_apps;
 mod appimage_integration;
 mod steam_api;
+mod steam_news;
 mod steamcmd_api;
 mod steamdb_api;
 mod template_metadata;
@@ -163,7 +164,8 @@ pub fn run() {
             check_updates_now,
             get_app_detail,
             get_app_config,
-            set_app_config
+            set_app_config,
+            steam_news::get_app_news
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

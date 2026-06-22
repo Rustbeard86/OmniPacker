@@ -1096,3 +1096,98 @@ input:disabled {
   cursor: pointer;
   padding: 0 2px;
 }
+
+/* ===== Patch notes modal ===== */
+.patch-notes-modal {
+  width: 760px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+}
+
+.patch-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.patch-notes-body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 10px;
+  min-height: 0;
+  height: 60vh;
+}
+
+.patch-notes-list {
+  border: 1px solid #505050;
+  background: #111011;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.patch-notes-item {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #2a292a;
+  color: #e6e6e6;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.patch-notes-item.active {
+  background: #3a3527;
+}
+
+.patch-notes-item .date {
+  display: block;
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+.patch-notes-content {
+  border: 1px solid #505050;
+  background: #1b1a1b;
+  padding: 10px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.patch-notes-content h3,
+.patch-notes-content h4,
+.patch-notes-content h5 {
+  margin: 0.4em 0 0.2em;
+}
+
+.patch-notes-content blockquote {
+  border-left: 3px solid #505050;
+  margin: 0.4em 0;
+  padding-left: 8px;
+  opacity: 0.9;
+}
+
+.patch-notes-content .bb-link {
+  color: #c7b56a;
+  text-decoration: underline;
+}
+
+.patch-notes-status {
+  font-size: 12px;
+  opacity: 0.85;
+  margin-top: 6px;
+  min-height: 16px;
+}
+
+.library-notes-button {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 2px;
+}
