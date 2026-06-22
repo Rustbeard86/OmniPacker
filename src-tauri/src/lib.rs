@@ -29,7 +29,10 @@ use depot_runner::{
     cancel_depotdownloader, run_depotdownloader, submit_steam_guard_code, DepotRunnerState,
 };
 use job_staging::cleanup_orphaned_staging;
-use login_store::{delete_login_data, load_login_data, save_login_data};
+use login_store::{
+    delete_account_hint, delete_login_data, load_account_hint, load_login_data, save_account_hint,
+    save_login_data,
+};
 use output_conflict::{resolve_output_conflict, OutputConflictState};
 use output_dir::{get_output_folder, open_output_folder};
 use owned_apps::{
@@ -152,6 +155,9 @@ pub fn run() {
             save_login_data,
             load_login_data,
             delete_login_data,
+            save_account_hint,
+            load_account_hint,
+            delete_account_hint,
             get_template_metadata,
             save_template_data,
             load_template_data,

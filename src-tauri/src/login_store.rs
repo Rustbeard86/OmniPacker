@@ -122,3 +122,57 @@ pub fn delete_login_data(app_handle: tauri::AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
+// The Steam account name resolved by the last successful login (QR or
+// credentials). Persisted so we can hand DepotDownloader `-username` on every
+// later run — that is the only way it will reuse the saved refresh token instead
+// of prompting for a fresh QR / Steam Guard each time.
+const ACCOUNT_HINT_FILE_NAME: &str = "account.dat";
+
+fn account_hint_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app_handle
+        .path()
+        .resolve(ACCOUNT_HINT_FILE_NAME, tauri::path::BaseDirectory::AppData)
+        .map_err(|e| format!("Failed to resolve account hint path: {}", e))
+}
+
+#[tauri::command]
+pub fn save_account_hint(app_handle: tauri::AppHandle, username: String) -> Result<(), String> {
+    let trimmed = username.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    let encoded = encrypt_payload(trimmed);
+    let path = account_hint_path(&app_handle)?;
+    ensure_parent_dir(&path)?;
+    std::fs::write(&path, encoded)
+        .map_err(|e| format!("Failed to write account hint to {}: {}", path.display(), e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn load_account_hint(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    let path = account_hint_path(&app_handle)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read account hint from {}: {}", path.display(), e))?;
+    let username = decrypt_payload(&content)?;
+    let trimmed = username.trim();
+    if trimmed.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(trimmed.to_string()))
+    }
+}
+
+#[tauri::command]
+pub fn delete_account_hint(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let path = account_hint_path(&app_handle)?;
+    if path.exists() {
+        std::fs::remove_file(&path)
+            .map_err(|e| format!("Failed to delete account hint at {}: {}", path.display(), e))?;
+    }
+    Ok(())
+}

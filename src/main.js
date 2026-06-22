@@ -2030,36 +2030,107 @@ const extractRememberedUsername = (line) => {
   if (!line) {
     return null;
   }
-  const match = line.match(/-username\s+(\S+)/);
-  return match ? match[1] : null;
+  // Stable marker the fork emits on every interactive (QR/credentials) login —
+  // the one reliable source after a QR login where no -username was supplied.
+  const fromMarker = line.match(/OMNIPACKER_ACCOUNT\s+(\S+)/);
+  if (fromMarker) {
+    return fromMarker[1];
+  }
+  // The fork prints "Success! Next time you can login with -username <name>".
+  const fromHint = line.match(/-username\s+(\S+)/);
+  if (fromHint) {
+    return fromHint[1];
+  }
+  // And "Logging '<name>' into Steam3..." on any username-based (token) login.
+  const fromLogon = line.match(/Logging '([^']+)' into Steam3/);
+  if (fromLogon) {
+    return fromLogon[1];
+  }
+  return null;
 };
 
-const rememberQrLogin = (job, line) => {
-  if (!job?.qrEnabled) {
+// Persist the resolved Steam account name. DepotDownloader only reuses a saved
+// refresh token when handed `-username`, so capturing this once lets every later
+// run (downloads, library, watcher) authenticate silently until the token
+// actually expires — no repeat QR / Steam Guard.
+const rememberAccount = (username) => {
+  const name = (username || "").trim();
+  if (!name || name === authState.rememberedUsername) {
     return;
   }
+  authState.rememberedUsername = name;
+  void tauriInvoke?.("save_account_hint", { username: name });
+};
+
+const captureAccountFromLog = (line) => {
+  const username = extractRememberedUsername(line);
+  if (username) {
+    rememberAccount(username);
+  }
+};
+
+// The saved refresh token finally expired / was revoked. Drop the remembered
+// account so the UI asks for an interactive login (QR / password) again instead
+// of silently retrying a dead token.
+const forgetRememberedAccount = () => {
+  if (!authState.rememberedUsername) {
+    return;
+  }
+  authState.rememberedUsername = null;
+  void tauriInvoke?.("delete_account_hint");
+  libraryControlsUpdater?.();
+};
+
+const tokenRejectedMatches = (line) =>
+  !!line && line.includes("Access token was rejected");
+
+const rememberQrLogin = (job, line) => {
   const username = extractRememberedUsername(line);
   if (!username) {
     return;
   }
-  authState.rememberedUsername = username;
+  rememberAccount(username);
 
   // Update current job so subsequent operations can reuse credentials
-  job.username = username;
-  job.rememberPassword = true;
+  if (job) {
+    job.username = username;
+    job.rememberPassword = true;
+  }
 };
 
 const applyRememberedAuth = (job) => {
   if (!job) {
     return;
   }
-  if (job.qrEnabled && authState.rememberedUsername) {
+  // If we know the account name from an earlier login and the user hasn't typed a
+  // different one this time, reuse it (no QR). DepotDownloader will pick up the
+  // saved refresh token and log in silently.
+  const typed = (job.username || "").trim();
+  if (!authState.rememberedUsername) {
+    return;
+  }
+  if (!typed || typed === authState.rememberedUsername) {
+    const wasQr = job.qrEnabled;
     job.qrEnabled = false;
     job.username = authState.rememberedUsername;
-    job.password = "";
+    if (wasQr) {
+      job.password = "";
+    }
     job.rememberPassword = true;
     pushJobLog(job, t("auth.reuseQr", { username: authState.rememberedUsername }));
   }
+};
+
+// Single source of truth for the auth args every operation sends. If we have a
+// known account name (typed now, saved login, or remembered from a past login)
+// we use username + saved-token reuse and skip QR; QR is only for a genuine
+// first login where no account name is known yet.
+const resolveAuthInputs = () => {
+  const typed = (steamUsernameInput?.value || "").trim();
+  const username = typed || authState.rememberedUsername || "";
+  const password = steamPasswordInput?.value || "";
+  const qrEnabled = username ? false : Boolean(qrLoginToggle?.checked);
+  return { username, password, qrEnabled };
 };
 
 const setSavedLogin = (login) => {
@@ -2812,7 +2883,11 @@ if (tauriEvent?.listen) {
     ) {
       pushJobLog(job, t("dd.noDepots"));
     }
-    if (job.qrEnabled && qrLoginSuccessMatches(event.payload?.line ?? "")) {
+    captureAccountFromLog(event.payload?.line ?? "");
+    if (tokenRejectedMatches(event.payload?.line ?? "")) {
+      forgetRememberedAccount();
+    }
+    if (qrLoginSuccessMatches(event.payload?.line ?? "")) {
       rememberQrLogin(job, event.payload?.line ?? "");
       closeQrModal();
     }
@@ -3149,6 +3224,18 @@ const loadSavedLoginDetails = async () => {
   } catch (error) {
     console.debug("[OmniPacker] Failed to load login data:", error);
   }
+
+  // Restore the account name resolved by a previous login so this session can
+  // reuse the saved refresh token without QR / Steam Guard.
+  try {
+    const hint = await tauriInvoke("load_account_hint");
+    if (hint) {
+      authState.rememberedUsername = hint;
+      libraryControlsUpdater?.();
+    }
+  } catch (error) {
+    console.debug("[OmniPacker] Failed to load account hint:", error);
+  }
 };
 
 const deleteSavedLoginDetails = async () => {
@@ -3160,6 +3247,7 @@ const deleteSavedLoginDetails = async () => {
   try {
     await tauriInvoke("delete_login_data");
     setSavedLogin(null);
+    forgetRememberedAccount();
     renderAll();
   } catch (error) {
     alert(t("auth.deleteFailed", { error: String(error) }));
@@ -3719,6 +3807,11 @@ const libraryCredHint = () =>
 // (a saved login populates both, covering that case).
 const libraryCredsOk = () => {
   const username = (steamUsernameInput?.value || "").trim();
+  // A remembered account (from a past login) is enough on its own — the saved
+  // refresh token authenticates silently.
+  if (authState.rememberedUsername) {
+    return true;
+  }
   if (settingsState.tokenLogin) {
     return Boolean(username);
   }
@@ -3771,7 +3864,8 @@ const applyWatchSettings = async () => {
     await tauriInvoke("set_watch_settings", {
       enabled: Boolean(watchEnabledToggle?.checked),
       intervalMinutes: interval,
-      username: steamUsernameInput?.value?.trim() || "",
+      username:
+        steamUsernameInput?.value?.trim() || authState.rememberedUsername || "",
     });
   } catch (error) {
     console.debug("[OmniPacker] Failed to save watch settings:", error);
@@ -4118,9 +4212,7 @@ const loadLibrary = async ({ force = false } = {}) => {
     return;
   }
 
-  const username = steamUsernameInput?.value?.trim() || "";
-  const password = steamPasswordInput?.value || "";
-  const qrEnabled = Boolean(qrLoginToggle?.checked);
+  const { username, password, qrEnabled } = resolveAuthInputs();
 
   libraryState.loading = true;
   setLibraryStatus(force ? "Refreshing from Steam…" : "Loading…");
@@ -4183,9 +4275,7 @@ const loadLibrary = async ({ force = false } = {}) => {
 
 const addSelectedToQueue = () => {
   const os = osSelect?.value || "Windows x64";
-  const username = steamUsernameInput?.value?.trim() || "";
-  const password = steamPasswordInput?.value || "";
-  const qrEnabled = Boolean(qrLoginToggle?.checked);
+  const { username, password, qrEnabled } = resolveAuthInputs();
 
   let added = 0;
   for (const app of libraryState.apps) {
@@ -4398,7 +4488,10 @@ const openAppConfig = async (app) => {
     const details = await tauriInvoke("get_app_detail", {
       input: {
         appids: [app.appid],
-        username: steamUsernameInput?.value?.trim() || "",
+        username:
+          steamUsernameInput?.value?.trim() ||
+          authState.rememberedUsername ||
+          "",
       },
     });
     const detail = Array.isArray(details) ? details[0] : null;
@@ -4629,7 +4722,11 @@ if (tauriEvent?.listen) {
     }
 
     updateQrCapture(enumState, payload);
-    if (enumState.qrEnabled && qrLoginSuccessMatches(line)) {
+    captureAccountFromLog(line);
+    if (tokenRejectedMatches(line)) {
+      forgetRememberedAccount();
+    }
+    if (qrLoginSuccessMatches(line)) {
       closeQrModal();
     }
     if (steamGuardPromptMatches(line)) {
