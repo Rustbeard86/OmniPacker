@@ -186,7 +186,10 @@ const translations = {
     "auth.password": "Steam Password:",
     "auth.qr": "Use QR Login",
     "auth.save": "Save Login Details",
-    "auth.saveMissing": "Enter both Steam username and password before saving.",
+    "auth.saveMissing": "Enter your Steam username before saving.",
+    "auth.saveOk": "Login details saved.",
+    "auth.saveOkUsername":
+      "Saved {{username}} for QR / token login. Your saved session will be reused; no password is stored.",
     "auth.saveFailed": "Failed to save login data: {{error}}",
     "auth.deleteFailed": "Failed to delete saved login data: {{error}}",
     "auth.loadFailed": "Failed to load saved login data: {{error}}",
@@ -3189,7 +3192,7 @@ const saveLoginDetails = async () => {
   const username = steamUsernameInput?.value?.trim() ?? "";
   const password = steamPasswordInput?.value ?? "";
 
-  if (!username || !password) {
+  if (!username) {
     alert(t("auth.saveMissing"));
     return;
   }
@@ -3199,10 +3202,23 @@ const saveLoginDetails = async () => {
     return;
   }
 
+  // Username-only is valid for QR / token login: remember the account name so it
+  // prefills on next launch and the saved refresh token is reused. A password,
+  // when given, is also stored for credential login.
   try {
-    await tauriInvoke("save_login_data", { username, password });
-    setSavedLogin({ username, password });
+    if (password) {
+      await tauriInvoke("save_login_data", { username, password });
+      setSavedLogin({ username, password });
+    } else {
+      // Drop any stored password but keep the typed username in the field.
+      await tauriInvoke("delete_login_data");
+      authState.savedLogin = null;
+    }
+    rememberAccount(username);
     renderAll();
+    alert(
+      password ? t("auth.saveOk") : t("auth.saveOkUsername", { username }),
+    );
   } catch (error) {
     alert(t("auth.saveFailed", { error: String(error) }));
   }
@@ -3229,6 +3245,11 @@ const loadSavedLoginDetails = async () => {
     const hint = await tauriInvoke("load_account_hint");
     if (hint) {
       authState.rememberedUsername = hint;
+      // Prefill the username field if a full saved login didn't already populate
+      // it, so QR / token logins reuse the account without retyping.
+      if (steamUsernameInput && !steamUsernameInput.value.trim()) {
+        steamUsernameInput.value = hint;
+      }
       libraryControlsUpdater?.();
     }
   } catch (error) {
