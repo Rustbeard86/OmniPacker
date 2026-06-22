@@ -9,7 +9,7 @@ use crate::job_metadata::JobMetadataFile;
 use crate::job_staging::resolve_staging_dir;
 use crate::output_conflict::{request_output_conflict_resolution, OutputConflictChoice};
 use crate::output_dir::resolve_downloads_dir;
-use crate::steam_api::sanitize_game_name;
+use crate::steam_api::{sanitize_game_name, sanitize_install_dir};
 
 /// Finalizes a job by moving staging output to final output directory
 ///
@@ -191,18 +191,25 @@ fn build_temp_output(
         .map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     // Determine installdir: must match the on-disk folder name that all non-shared depot
-    // files will be merged into. Prefer the primary depot's name from metadata; fall back
-    // to the game name if the primary depot isn't found. Either way it must be sanitized:
-    // raw names can contain characters that are illegal in filesystem paths (e.g. the colon
-    // in "Fallout: New Vegas"), which is fine on Linux but fails on Windows (os error 267).
-    let install_dir_name = metadata
-        .depots
-        .iter()
-        .find(|d| d.depot_id == metadata.primary_depot_id)
-        .map(|d| d.depot_name.clone())
-        .map(|name| sanitize_game_name(&name))
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| sanitize_game_name(&metadata.game_name));
+    // files will be merged into. Use the game's display name (kept intact, like a real
+    // Steam install dir — "Turnbound", not the depot label "Turnbound - windows"). Fall
+    // back to the primary depot name, then the appid, if the game name sanitizes to empty.
+    // Sanitizing strips only path-illegal characters so the same value is safe on Windows
+    // and matches the `.acf` installdir exactly.
+    let install_dir_name = {
+        let from_game = sanitize_install_dir(&metadata.game_name);
+        if !from_game.is_empty() {
+            from_game
+        } else {
+            metadata
+                .depots
+                .iter()
+                .find(|d| d.depot_id == metadata.primary_depot_id)
+                .map(|d| sanitize_install_dir(&d.depot_name))
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| metadata.appid.clone())
+        }
+    };
 
     // Compute per-depot sizes from the staging structure BEFORE the merge.
     // After merge, all non-shared depot files live in one folder and individual sizes

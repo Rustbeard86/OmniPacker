@@ -4,7 +4,8 @@
 //! installed games. These files enable drop-in compatibility with Steam's
 //! library detection.
 //!
-//! PRIVACY: The `LastOwner` field is ALWAYS set to "0" to prevent deanonymization.
+//! PRIVACY: `LastOwner` is ALWAYS "0" (no SteamID) and `LastUpdated` is ALWAYS
+//! "0" (no build/download timestamp) so the manifest carries no PII.
 
 use std::collections::HashMap;
 use std::fs;
@@ -109,12 +110,6 @@ fn generate_acf_content(
 ) -> String {
     let mut vdf = VdfBuilder::new();
 
-    // Get Unix timestamp from build datetime, or use current time as fallback
-    let last_updated = metadata
-        .build_datetime_utc
-        .map(|dt| dt.timestamp())
-        .unwrap_or_else(|| chrono::Utc::now().timestamp());
-
     // SizeOnDisk = only the game's installdir, not shared depot folders
     let size_on_disk = calculate_size_on_disk(&common_dir.join(install_dir_name));
 
@@ -132,7 +127,9 @@ fn generate_acf_content(
     vdf.key_value("name", &metadata.game_name);
     vdf.key_value("StateFlags", "4");
     vdf.key_value("installdir", install_dir_name);
-    vdf.key_value("LastUpdated", &last_updated.to_string());
+    // PRIVACY: LastUpdated is "0" so the file doesn't leak when this was built /
+    // downloaded. Steam just treats the app as never-updated.
+    vdf.key_value("LastUpdated", "0");
     vdf.key_value("LastPlayed", "0");
     vdf.key_value("SizeOnDisk", &size_on_disk.to_string());
     vdf.key_value("StagingSize", "0");
@@ -257,11 +254,6 @@ pub fn write_shared_depots_acf(
     // Total size of the "Steamworks Shared" folder on disk
     let size_on_disk = calculate_size_on_disk(&common_dir.join("Steamworks Shared"));
 
-    let last_updated = metadata
-        .build_datetime_utc
-        .map(|dt| dt.timestamp())
-        .unwrap_or_else(|| chrono::Utc::now().timestamp());
-
     let mut vdf = VdfBuilder::new();
     vdf.open_section("AppState");
 
@@ -270,7 +262,7 @@ pub fn write_shared_depots_acf(
     vdf.key_value("name", "Steamworks Common Redistributables");
     vdf.key_value("StateFlags", "4");
     vdf.key_value("installdir", "Steamworks Shared");
-    vdf.key_value("LastUpdated", &last_updated.to_string());
+    vdf.key_value("LastUpdated", "0");
     vdf.key_value("LastPlayed", "0");
     vdf.key_value("SizeOnDisk", &size_on_disk.to_string());
     vdf.key_value("StagingSize", "0");
@@ -423,6 +415,20 @@ mod tests {
         assert!(
             content.contains("\"LastOwner\"\t\t\"0\""),
             "PRIVACY VIOLATION: LastOwner must be \"0\" to prevent deanonymization"
+        );
+    }
+
+    #[test]
+    fn test_last_updated_always_zero() {
+        // The build datetime would otherwise leak when this was produced.
+        let metadata = create_test_metadata();
+        let manifest_map = HashMap::new();
+        let depot_sizes = empty_depot_sizes();
+        let content = generate_acf_content(&metadata, Path::new("/tmp/test"), "Test Game", &manifest_map, &depot_sizes);
+
+        assert!(
+            content.contains("\"LastUpdated\"\t\t\"0\""),
+            "PRIVACY: LastUpdated must be \"0\" so no timestamp is leaked"
         );
     }
 

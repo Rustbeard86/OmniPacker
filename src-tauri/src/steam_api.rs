@@ -204,6 +204,27 @@ pub fn sanitize_game_name(name: &str) -> String {
     sanitized.trim_end_matches('.').to_string()
 }
 
+/// Sanitizes a game name for use as the `steamapps/common/<installdir>` folder
+/// (and the matching `installdir` value in the `.acf`).
+///
+/// Unlike [`sanitize_game_name`] — which is for the decorated top-level output
+/// folder and maps spaces to dots — this keeps the title as close to the
+/// original as possible, like a real Steam install directory: spaces and
+/// apostrophes are preserved. Only characters that are illegal in a Windows
+/// path segment (and control characters) are removed, plus trailing dots and
+/// spaces, which Windows silently strips and would otherwise desync the folder
+/// from the `.acf` value.
+pub fn sanitize_install_dir(name: &str) -> String {
+    const WINDOWS_ILLEGAL: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+
+    let sanitized: String = name
+        .chars()
+        .filter(|c| !c.is_control() && !WINDOWS_ILLEGAL.contains(c))
+        .collect();
+
+    sanitized.trim().trim_end_matches(['.', ' ']).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,5 +287,29 @@ mod tests {
             sanitize_game_name("The Witcher 3: Wild Hunt - Game of the Year Edition"),
             "The.Witcher.3.Wild.Hunt.-.Game.of.the.Year.Edition"
         );
+    }
+
+    #[test]
+    fn test_sanitize_install_dir_keeps_title_intact() {
+        // The inner steamapps/common folder should look like a real Steam
+        // installdir: spaces and apostrophes preserved, nothing decorated.
+        assert_eq!(sanitize_install_dir("Turnbound"), "Turnbound");
+        assert_eq!(sanitize_install_dir("Half-Life 2"), "Half-Life 2");
+        assert_eq!(sanitize_install_dir("Assassin's Creed"), "Assassin's Creed");
+    }
+
+    #[test]
+    fn test_sanitize_install_dir_strips_illegal_chars() {
+        // Path-illegal characters are removed; the rest of the title stays.
+        assert_eq!(sanitize_install_dir("Fallout: New Vegas"), "Fallout New Vegas");
+        assert_eq!(sanitize_install_dir("Quake II <RTX>"), "Quake II RTX");
+        assert_eq!(sanitize_install_dir("Game/Name\\Test"), "GameNameTest");
+    }
+
+    #[test]
+    fn test_sanitize_install_dir_trims_trailing_dots_and_spaces() {
+        // Windows silently drops these, so trim them to keep folder == .acf value.
+        assert_eq!(sanitize_install_dir("Trailing... "), "Trailing");
+        assert_eq!(sanitize_install_dir("  Spaced  "), "Spaced");
     }
 }
