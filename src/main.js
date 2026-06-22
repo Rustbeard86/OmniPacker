@@ -131,6 +131,10 @@ const updatesState = {
   items: [], // [{ appid, name, branch, buildId, previousBuildId }]
 };
 
+// Assigned once the Library section initializes; lets earlier code (e.g.
+// updateFormInputState) refresh the Library controls without a TDZ reference.
+let libraryControlsUpdater = null;
+
 // Lightweight pseudo-job for the enumeration login flow so the existing QR /
 // Steam Guard handlers can be reused without a real queue job.
 const enumState = {
@@ -2177,6 +2181,8 @@ const updateFormInputState = () => {
   if (gameManager) gameManager.classList.toggle("form-inputs-disabled", running);
   if (branchManager) branchManager.classList.toggle("form-inputs-disabled", running);
   if (credentials) credentials.classList.toggle("form-inputs-disabled", running);
+
+  libraryControlsUpdater?.();
 };
 
 const moveJob = (jobId, direction) => {
@@ -3679,8 +3685,35 @@ const librarySelectionCountEl = document.querySelector(
 );
 const libraryAddButton = document.querySelector(".library-add-button");
 const libraryUpdatesEl = document.getElementById("library-updates");
+const libraryCredHintEl = document.querySelector(".library-cred-hint");
 const watchEnabledToggle = document.getElementById("watch-enabled-toggle");
 const watchIntervalInput = document.getElementById("watch-interval-input");
+
+const LIBRARY_CRED_HINT =
+  "Sign in first: on the Queue tab, enter your Steam username + password (or enable QR login).";
+
+// Minimum to authenticate an enumeration: QR, or a username AND password
+// (a saved login populates both, so this also covers the saved-login case).
+const libraryCredsOk = () =>
+  Boolean(qrLoginToggle?.checked) ||
+  Boolean((steamUsernameInput?.value || "").trim() && (steamPasswordInput?.value || ""));
+
+const updateLibraryControls = () => {
+  const ok = libraryCredsOk();
+  const busy = libraryState.loading || isQueueRunning();
+  if (libraryLoadButton) {
+    libraryLoadButton.disabled = !ok || busy;
+    libraryLoadButton.title = ok ? "" : LIBRARY_CRED_HINT;
+  }
+  if (libraryRefreshButton) {
+    libraryRefreshButton.disabled = !ok || busy;
+    libraryRefreshButton.title = ok ? "" : LIBRARY_CRED_HINT;
+  }
+  if (libraryCredHintEl) {
+    libraryCredHintEl.hidden = ok;
+    libraryCredHintEl.textContent = ok ? "" : LIBRARY_CRED_HINT;
+  }
+};
 
 const loadWatchConfig = async () => {
   if (!tauriInvoke) return;
@@ -3888,7 +3921,9 @@ const renderLibrary = () => {
     empty.className = "library-empty";
     empty.textContent = libraryState.loading
       ? "Loading your library…"
-      : 'Click "Load My Library" to fetch the apps owned by your signed-in account.';
+      : libraryCredsOk()
+        ? 'Click "Load My Library" to fetch the apps owned by your signed-in account.'
+        : LIBRARY_CRED_HINT;
     libraryListEl.appendChild(empty);
     updateLibrarySelectionUI();
     return;
@@ -4046,13 +4081,15 @@ const loadLibrary = async ({ force = false } = {}) => {
     return;
   }
 
+  if (!libraryCredsOk()) {
+    setLibraryStatus(LIBRARY_CRED_HINT);
+    updateLibraryControls();
+    return;
+  }
+
   const username = steamUsernameInput?.value?.trim() || "";
   const password = steamPasswordInput?.value || "";
   const qrEnabled = Boolean(qrLoginToggle?.checked);
-  if (!qrEnabled && !username) {
-    setLibraryStatus("Enter your Steam username (or enable QR login) first.");
-    return;
-  }
 
   libraryState.loading = true;
   setLibraryStatus(force ? "Refreshing from Steam…" : "Loading…");
@@ -4107,9 +4144,8 @@ const loadLibrary = async ({ force = false } = {}) => {
     libraryState.loading = false;
     enumState.active = false;
     closeAuthModals();
-    if (libraryLoadButton) libraryLoadButton.disabled = false;
-    if (libraryRefreshButton) libraryRefreshButton.disabled = false;
     if (librarySearch) librarySearch.disabled = !libraryState.loaded;
+    updateLibraryControls();
     renderLibrary();
   }
 };
@@ -4505,6 +4541,17 @@ if (patchNotesOverlay) {
     if (e.target === patchNotesOverlay) closePatchNotes();
   });
 }
+
+// Keep the Library controls in sync with the credential fields (which live on
+// the Queue tab) and the QR toggle.
+libraryControlsUpdater = updateLibraryControls;
+steamUsernameInput?.addEventListener("input", updateLibraryControls);
+steamPasswordInput?.addEventListener("input", updateLibraryControls);
+qrLoginToggle?.addEventListener("change", updateLibraryControls);
+document
+  .querySelector('.tab[data-tab="library"]')
+  ?.addEventListener("click", updateLibraryControls);
+updateLibraryControls();
 
 if (libraryLoadButton) {
   libraryLoadButton.addEventListener("click", () => void loadLibrary());

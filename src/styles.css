@@ -1291,3 +1291,11 @@ input:disabled {
   margin-bottom: 4px;
   opacity: 0.9;
 }
+
+.library-cred-hint {
+  border: 1px solid #c7873a;
+  background: #3a2f1c;
+  color: #f0d8a8;
+  padding: 5px 9px;
+  font-size: 12px;
+}
