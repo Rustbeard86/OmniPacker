@@ -1233,3 +1233,48 @@ input:disabled {
   padding-left: 8px;
   opacity: 0.9;
 }
+
+/* ===== App metadata (config modal) ===== */
+.app-config-meta {
+  border: 1px solid #505050;
+  background: #111011;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.app-config-meta:empty {
+  display: none;
+}
+
+.app-config-meta .meta-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.app-config-meta .meta-row {
+  display: flex;
+  gap: 6px;
+}
+
+.app-config-meta .meta-row .k {
+  opacity: 0.7;
+  min-width: 78px;
+}
+
+.app-config-meta .meta-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.app-config-meta .badge {
+  border: 1px solid #505050;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  opacity: 0.9;
+}

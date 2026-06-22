@@ -4153,8 +4153,76 @@ const appConfigDepotsEl = document.querySelector(".app-config-depots");
 const appConfigStatus = document.querySelector(".app-config-status");
 const appConfigSaveBtn = document.querySelector(".app-config-save");
 const appConfigCloseBtn = document.querySelector(".app-config-close");
+const appConfigMetaEl = document.querySelector(".app-config-meta");
 let appConfigCurrentApp = null;
 let appConfigOsBoxes = {};
+
+const renderAppMeta = (meta) => {
+  if (!appConfigMetaEl) return;
+  appConfigMetaEl.innerHTML = "";
+  if (!meta) return;
+
+  const name = document.createElement("div");
+  name.className = "meta-name";
+  name.textContent = meta.name || `App ${meta.appid}`;
+  appConfigMetaEl.appendChild(name);
+
+  const addRow = (k, v) => {
+    if (!v) return;
+    const row = document.createElement("div");
+    row.className = "meta-row";
+    const kk = document.createElement("span");
+    kk.className = "k";
+    kk.textContent = k;
+    const vv = document.createElement("span");
+    vv.textContent = v;
+    row.appendChild(kk);
+    row.appendChild(vv);
+    appConfigMetaEl.appendChild(row);
+  };
+
+  addRow("Type", [meta.appType, meta.isFree ? "free" : null].filter(Boolean).join(" · "));
+  addRow(
+    "Released",
+    meta.comingSoon ? `${meta.releaseDate || "TBA"} (coming soon)` : meta.releaseDate,
+  );
+  addRow("Developer", (meta.developers || []).join(", "));
+  addRow("Publisher", (meta.publishers || []).join(", "));
+  addRow("Genres", (meta.genres || []).join(", "));
+  addRow(
+    "Platforms",
+    [meta.windows ? "Windows" : null, meta.mac ? "macOS" : null, meta.linux ? "Linux" : null]
+      .filter(Boolean)
+      .join(", "),
+  );
+  if (meta.languages) {
+    addRow(
+      "Languages",
+      meta.languages.length > 120 ? `${meta.languages.slice(0, 120)}…` : meta.languages,
+    );
+  }
+
+  const badges = document.createElement("div");
+  badges.className = "meta-badges";
+  const addBadge = (text) => {
+    if (!text) return;
+    const b = document.createElement("span");
+    b.className = "badge";
+    b.textContent = text;
+    badges.appendChild(b);
+  };
+  if (meta.reviewDesc) {
+    const extra =
+      meta.positivePercent != null
+        ? ` (${meta.positivePercent}%${meta.totalReviews ? `, ${meta.totalReviews.toLocaleString()}` : ""})`
+        : "";
+    addBadge(`${meta.reviewDesc}${extra}`);
+  }
+  if (meta.playerCount != null) addBadge(`${meta.playerCount.toLocaleString()} playing`);
+  if (meta.metacritic != null) addBadge(`Metacritic ${meta.metacritic}`);
+  if (meta.dlcCount) addBadge(`${meta.dlcCount} DLC`);
+  if (badges.children.length) appConfigMetaEl.appendChild(badges);
+};
 
 const humanSize = (bytes) => {
   const n = Number(bytes);
@@ -4210,6 +4278,12 @@ const openAppConfig = async (app) => {
   }
   if (appConfigStatus) appConfigStatus.textContent = "Loading depots…";
   if (appConfigDepotsEl) appConfigDepotsEl.innerHTML = "";
+  if (appConfigMetaEl) appConfigMetaEl.innerHTML = "";
+
+  // Rich metadata (developer, reviews, players, …) from public Steam endpoints.
+  tauriInvoke("get_app_meta", { appid: app.appid })
+    .then((meta) => renderAppMeta(meta))
+    .catch((error) => console.debug("[OmniPacker] app meta failed:", error));
 
   if (appConfigBranch) {
     appConfigBranch.innerHTML = "";
