@@ -1191,3 +1191,45 @@ input:disabled {
   cursor: pointer;
   padding: 0 2px;
 }
+
+/* ===== Template patch-notes + rendered preview ===== */
+.template-patch-pick {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+
+.template-patch-appid {
+  width: 90px;
+}
+
+.template-patch-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.template-preview-rendered {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid #505050;
+  background: #1b1a1b;
+  color: #e6e6e6;
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.template-preview-rendered .bb-link {
+  color: #c7b56a;
+  text-decoration: underline;
+}
+
+.template-preview-rendered blockquote {
+  border-left: 3px solid #505050;
+  margin: 0.4em 0;
+  padding-left: 8px;
+  opacity: 0.9;
+}

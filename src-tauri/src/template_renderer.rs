@@ -13,6 +13,7 @@ pub enum TemplateBlock {
     DepotList { config: DepotListConfig },
     FreeText { config: FreeTextConfig },
     UploadedVersion { config: UploadedVersionConfig },
+    PatchNotes { config: PatchNotesConfig },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +47,11 @@ pub struct UploadedVersionConfig {
     pub template: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatchNotesConfig {
+    pub text: String,
+}
+
 /// Template payload structure matching frontend format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplatePayload {
@@ -77,6 +83,7 @@ fn block_type_name(block: &TemplateBlock) -> &'static str {
         TemplateBlock::DepotList { .. } => "depot_list",
         TemplateBlock::FreeText { .. } => "free_text",
         TemplateBlock::UploadedVersion { .. } => "uploaded_version",
+        TemplateBlock::PatchNotes { .. } => "patch_notes",
     }
 }
 
@@ -112,6 +119,10 @@ pub fn render_template(
             TemplateBlock::FreeText { config } => {
                 render_template_string(&config.text, &base_values)
             }
+
+            // Patch-note BBCode is emitted verbatim (it may contain `{` that
+            // shouldn't be treated as a token).
+            TemplateBlock::PatchNotes { config } => config.text.clone(),
 
             TemplateBlock::DepotList { config } => {
                 let max_depots = config.max_depots.unwrap_or(100);

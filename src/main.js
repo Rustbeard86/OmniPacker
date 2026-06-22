@@ -54,6 +54,8 @@ const templateResetButton = document.querySelector(".template-reset-button");
 const templateLoadInput = document.querySelector(".template-load-input");
 const templateCopyButton = document.querySelector(".template-copy-button");
 const templatePreviewOutput = document.querySelector(".template-preview-output");
+const templatePreviewRendered = document.querySelector(".template-preview-rendered");
+const templateRenderToggle = document.querySelector(".template-render-toggle");
 const templatePreviewMeta = document.querySelector(".template-preview-meta");
 const templateStatus = document.querySelector(".template-status");
 const templateConfirmOverlay = document.querySelector(".template-confirm-overlay");
@@ -243,6 +245,7 @@ const translations = {
     "template.block.depot_list": "Depot List Block",
     "template.block.free_text": "Free Text Block",
     "template.block.uploaded_version": "Uploaded Version Block",
+    "template.block.patch_notes": "Patch Notes Block",
     "template.field.template": "Template",
     "template.field.text": "Text",
     "template.field.depotTitle": "Spoiler title",
@@ -1043,6 +1046,7 @@ const TEMPLATE_BLOCK_TYPES = [
   { type: "depot_list", labelKey: "template.block.depot_list" },
   { type: "free_text", labelKey: "template.block.free_text" },
   { type: "uploaded_version", labelKey: "template.block.uploaded_version" },
+  { type: "patch_notes", labelKey: "template.block.patch_notes" },
 ];
 
 const TEMPLATE_DEFAULTS = {
@@ -1062,6 +1066,9 @@ const TEMPLATE_DEFAULTS = {
   free_text: {
     text: "",
   },
+  patch_notes: {
+    text: "",
+  },
   uploaded_version: {
     template:
       "[color=white][b]Uploaded version:[/b] [i]{{build_datetime_utc}} [Build {{build_id}}][/i][/color]",
@@ -1072,6 +1079,8 @@ const templateState = {
   blocks: [],
   metadata: null,
 };
+
+let templateShowRendered = false;
 
 let templateBlockSequence = 0;
 
@@ -1330,6 +1339,75 @@ const renderTemplateBuilder = () => {
       blockEl.appendChild(field);
     }
 
+    if (block.type === "patch_notes") {
+      // Fetch + pick a patch note by AppID, then fill the editable content.
+      const pickField = document.createElement("div");
+      pickField.className = "template-block-field template-patch-pick";
+      const appidInput = document.createElement("input");
+      appidInput.type = "text";
+      appidInput.placeholder = "AppID";
+      appidInput.className = "template-patch-appid";
+      const fetchBtn = document.createElement("button");
+      fetchBtn.type = "button";
+      fetchBtn.textContent = "Fetch notes";
+      const select = document.createElement("select");
+      select.className = "template-patch-select";
+      select.style.display = "none";
+      pickField.appendChild(appidInput);
+      pickField.appendChild(fetchBtn);
+      pickField.appendChild(select);
+      blockEl.appendChild(pickField);
+
+      const field = document.createElement("div");
+      field.className = "template-block-field";
+      const label = document.createElement("label");
+      label.textContent = t("template.field.text");
+      const textarea = document.createElement("textarea");
+      textarea.value = block.config.text || "";
+      textarea.addEventListener("input", () =>
+        updateTemplateBlockConfig(block.id, { text: textarea.value }),
+      );
+      field.appendChild(label);
+      field.appendChild(textarea);
+      blockEl.appendChild(field);
+
+      let fetchedItems = [];
+      fetchBtn.addEventListener("click", async () => {
+        const appid = Number(appidInput.value.trim());
+        if (!appid || !tauriInvoke) return;
+        fetchBtn.disabled = true;
+        fetchBtn.textContent = "…";
+        try {
+          const res = await tauriInvoke("get_app_news", { appid, count: 15 });
+          fetchedItems = res?.items || [];
+          select.innerHTML = "";
+          const def = document.createElement("option");
+          def.value = "";
+          def.textContent = `Select a note (${fetchedItems.length})`;
+          select.appendChild(def);
+          fetchedItems.forEach((item, i) => {
+            const o = document.createElement("option");
+            o.value = String(i);
+            o.textContent = item.title || "(untitled)";
+            select.appendChild(o);
+          });
+          select.style.display = fetchedItems.length ? "" : "none";
+        } catch (error) {
+          setTemplateStatus(`Patch notes fetch failed: ${error}`);
+        } finally {
+          fetchBtn.disabled = false;
+          fetchBtn.textContent = "Fetch notes";
+        }
+      });
+      select.addEventListener("change", () => {
+        const idx = Number(select.value);
+        if (Number.isInteger(idx) && fetchedItems[idx]) {
+          textarea.value = fetchedItems[idx].contents || "";
+          updateTemplateBlockConfig(block.id, { text: textarea.value });
+        }
+      });
+    }
+
     if (block.type === "depot_list") {
       const titleField = document.createElement("div");
       titleField.className = "template-block-field";
@@ -1441,6 +1519,12 @@ const renderTemplateOutput = (blocks, metadata) => {
       continue;
     }
 
+    if (block.type === "patch_notes") {
+      // Emitted verbatim — patch-note BBCode may contain `{` that isn't a token.
+      outputParts.push(block.config.text || "");
+      continue;
+    }
+
     if (block.type === "depot_list") {
       if (depots.length === 0) {
         return { error: t("template.error.noDepots") };
@@ -1523,13 +1607,25 @@ const renderTemplatePreview = () => {
     if (templateCopyButton) {
       templateCopyButton.disabled = true;
     }
-    return;
+  } else {
+    templatePreviewOutput.value = result.output;
+    templatePreviewOutput.classList.remove("is-error");
+    if (templateCopyButton) {
+      templateCopyButton.disabled = false;
+    }
   }
 
-  templatePreviewOutput.value = result.output;
-  templatePreviewOutput.classList.remove("is-error");
-  if (templateCopyButton) {
-    templateCopyButton.disabled = false;
+  // Rendered BBCode view (only when toggled on and there's valid output).
+  if (templatePreviewRendered) {
+    const showRendered = templateShowRendered && !result.error;
+    if (showRendered) {
+      templatePreviewRendered.innerHTML = bbcodeToHtml(result.output);
+      templatePreviewRendered.hidden = false;
+      templatePreviewOutput.style.display = "none";
+    } else {
+      templatePreviewRendered.hidden = true;
+      templatePreviewOutput.style.display = "";
+    }
   }
 };
 
@@ -3487,6 +3583,15 @@ if (outputConflictOverlay) {
 if (templateCopyButton) {
   templateCopyButton.addEventListener("click", () => {
     void copyTemplatePreview();
+  });
+}
+
+if (templateRenderToggle) {
+  templateRenderToggle.addEventListener("click", () => {
+    templateShowRendered = !templateShowRendered;
+    templateRenderToggle.textContent = templateShowRendered ? "BBCode" : "Rendered";
+    templateRenderToggle.classList.toggle("active", templateShowRendered);
+    renderTemplatePreview();
   });
 }
 
