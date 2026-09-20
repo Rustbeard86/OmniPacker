@@ -1,0 +1,1 @@
+{"t":"evt","event":"ready","data":{"protocol":1,"engine":"1.2.3.4","host":"OmniPacker.EngineHost","capabilities":["hello","ping","shutdown"]}}

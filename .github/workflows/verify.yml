@@ -1,0 +1,50 @@
+name: Verify
+
+# Fast cross-language checks on every push and PR, so tests run against every
+# build. Heavier per-platform release bundling stays in build.yml.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  engine-tests:
+    name: Engine (.NET)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build engine solution
+        run: dotnet build engine/OmniPacker.Engine.slnx -c Release --nologo
+
+      - name: Test engine
+        run: dotnet test engine/OmniPacker.Engine.slnx -c Release --no-build --nologo
+
+  contract-tests:
+    name: IPC contract (Rust)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # engine-ipc is a pure-serde crate: no webview toolchain needed. It parses
+      # the same contracts/fixtures the .NET codec does, guaranteeing the two
+      # implementations agree on the wire format.
+      - name: Test IPC contract crate
+        working-directory: src-tauri
+        run: cargo test -p engine-ipc
