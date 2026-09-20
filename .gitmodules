@@ -1,0 +1,4 @@
+[submodule "vendor/DepotDownloader"]
+	path = vendor/DepotDownloader
+	url = https://github.com/Rustbeard86/DepotDownloader.git
+	branch = master
