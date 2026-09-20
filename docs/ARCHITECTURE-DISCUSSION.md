@@ -330,17 +330,19 @@ Integration facts / constraints:
   validate into `Plugins.Game`), keep OmniPacker finalization/.acf on top; retire
   the DD sidecar + submodule once at parity.
 
-### 10.3 New open questions (engine)
+### 10.3 Engine decisions (locked)
 
-- Q-ENG-1: Bring the engine in as a vendored COPY inside OmniPacker (subtree/copy,
-  fully isolates production, no cross-repo link) or push SteamForge to a PRIVATE
-  GitHub repo and consume Engine via submodule (traceable, mirrors the DD setup,
-  but requires publishing scrubbed production code)? (Recommend: vendored copy -
-  it honors "changes local only" with the least risk to production.)
-- Q-ENG-2: Daemon IPC style - line-oriented JSON over stdio (like DD, simplest,
-  matches existing patterns) or a local loopback HTTP/WebSocket (richer streaming
-  for progress/log/auth events, but heavier)? (Recommend: stdio line-JSON with
-  event markers first; revisit if streaming needs outgrow it.)
-- Q-ENG-3: Retire DD once the engine downloader reaches parity, or keep DD as a
-  selectable alternate downloader long-term? (Recommend: retire after parity to
-  reduce size and maintenance.)
+- Q-ENG-1 (intake): DECIDED - vendored COPY inside OmniPacker (Engine +
+  Abstractions + Plugins.Game), scrubbed of VPS/secret material, source commit
+  recorded for provenance. Isolates production SteamForge; OmniPacker evolves its
+  own copy. Changes never go back to the production tree.
+- Q-ENG-2 (IPC): DECIDED - transport-agnostic line-JSON message protocol over an
+  abstract read/write stream ("virtual file"). Implement the STDIO PIPE transport
+  first (minimal, fully cross-OS); a local socket is a later drop-in transport
+  with no protocol/logic change. Rationale: portability risk is in the transport,
+  not the protocol - pipes are identical across OSes; sockets vary and add
+  port/lifecycle/auth work. This keeps the socket capability path open at
+  near-zero extra cost now.
+- Q-ENG-3 (DD future): DECIDED - retire the DD sidecar/submodule once the engine
+  downloader reaches parity (branch password, os/arch/language, validate). DD
+  stays only as the working downloader until then.
