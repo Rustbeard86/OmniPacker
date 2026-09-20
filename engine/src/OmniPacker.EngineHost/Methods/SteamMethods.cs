@@ -31,5 +31,48 @@ public static class SteamMethods
             }
             return Task.FromResult<JsonNode?>(new JsonObject { ["accounts"] = accounts });
         });
+
+        // --- Live methods (connect to Steam; exercised by manual/integration runs,
+        // not CI). Each is time-boxed so a hung Steam call cannot wedge the loop. ---
+
+        // Silent login from a stored refresh token (no QR/password prompt).
+        dispatcher.Register("auth.resume", async (_, ct) =>
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(90));
+            engine.Session.StartPump();
+            var resumed = await engine.Session.TryResumeAsync(timeout.Token);
+            return new JsonObject
+            {
+                ["resumed"] = resumed,
+                ["status"] = EventBridge.AuthStatusPayload(engine.Session.Status),
+            };
+        });
+
+        // Enumerate the logged-on account's owned apps and persist them to the
+        // ownership catalog. Returns a count + a small sample (no full dump).
+        dispatcher.Register("library.enumerate", async (_, ct) =>
+        {
+            if (!engine.Session.IsLoggedOn)
+                throw RpcException.Unauthenticated("Not logged on; call auth.resume or an auth login method first.");
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromMinutes(3));
+
+            var owned = await engine.Content.EnumerateOwnedAppsAsync(timeout.Token);
+            var account = engine.Session.AccountName ?? "unknown";
+            engine.Store.ReplaceOwnership(account, owned);
+
+            var sample = new JsonArray();
+            foreach (var app in owned.Take(5))
+                sample.Add(new JsonObject { ["appId"] = app.AppId, ["name"] = app.Name });
+
+            return new JsonObject
+            {
+                ["account"] = account,
+                ["count"] = owned.Count,
+                ["sample"] = sample,
+            };
+        });
     }
 }

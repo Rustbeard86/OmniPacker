@@ -25,6 +25,24 @@ public sealed class EngineServices : IAsyncDisposable
 
     private EngineServices(ServiceProvider provider) => _provider = provider;
 
+    /// <summary>
+    /// Default on-device data directory when OMNIPACKER_ENGINE_DATA is unset:
+    /// a per-user OS app-data path (Windows %LOCALAPPDATA%, macOS Application
+    /// Support, Linux XDG data home), NEVER inside the repo. Steam refresh tokens
+    /// (steam-tokens.json) live here and are refreshed by SteamKit while the
+    /// session is active; the repo also gitignores engine-data/ + steam-tokens.json
+    /// as a belt-and-suspenders guard.
+    /// </summary>
+    public static string DefaultDataDir()
+    {
+        var baseDir = Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData,
+            Environment.SpecialFolderOption.Create);
+        if (string.IsNullOrWhiteSpace(baseDir))
+            baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
+        return Path.Combine(baseDir, "OmniPacker", "engine");
+    }
+
     public ILogBroadcaster Log => _provider.GetRequiredService<ILogBroadcaster>();
     public SteamTokenStore TokenStore => _provider.GetRequiredService<SteamTokenStore>();
     public SteamSessionManager Session => _provider.GetRequiredService<SteamSessionManager>();

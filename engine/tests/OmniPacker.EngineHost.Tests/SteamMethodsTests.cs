@@ -46,5 +46,21 @@ public class SteamMethodsTests
 
         Assert.Contains("auth.status", dispatcher.Capabilities);
         Assert.Contains("account.list", dispatcher.Capabilities);
+        Assert.Contains("auth.resume", dispatcher.Capabilities);
+        Assert.Contains("library.enumerate", dispatcher.Capabilities);
+    }
+
+    [Fact]
+    public async Task Library_enumerate_refuses_when_not_logged_on()
+    {
+        using var temp = new TempData();
+        await using var engine = EngineServices.Create(temp.Dir);
+        var dispatcher = new Dispatcher();
+        SteamMethods.Register(dispatcher, engine);
+
+        var res = await dispatcher.HandleAsync(new RequestMessage(3, "library.enumerate", null), CancellationToken.None);
+
+        Assert.False(res.Ok);
+        Assert.Equal(RpcError.Unauthenticated, res.Error!.Code);
     }
 }

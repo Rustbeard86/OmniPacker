@@ -22,6 +22,18 @@ public class EngineCompositionTests
     }
 
     [Fact]
+    public void Default_data_dir_is_absolute_per_user_and_outside_the_repo()
+    {
+        var dir = EngineServices.DefaultDataDir();
+        Assert.True(Path.IsPathRooted(dir), "default data dir must be absolute");
+        Assert.EndsWith(Path.Combine("OmniPacker", "engine"), dir);
+        // Must not live under this repository (tokens must never reach the repo).
+        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
+        Assert.False(Path.GetFullPath(dir).StartsWith(repoRoot, StringComparison.OrdinalIgnoreCase),
+            $"default data dir {dir} must not be inside the repo {repoRoot}");
+    }
+
+    [Fact]
     public async Task Fresh_data_dir_starts_disconnected_with_no_accounts()
     {
         using var temp = new TempData();

@@ -10,7 +10,7 @@ using OmniPacker.EngineHost.Transport;
 // connect to Steam - that happens only when an auth method is called.
 
 var dataDir = Environment.GetEnvironmentVariable("OMNIPACKER_ENGINE_DATA")
-    ?? Path.Combine(Environment.CurrentDirectory, "engine-data");
+    ?? EngineServices.DefaultDataDir();
 
 var transport = new StdioTransport();
 var dispatcher = new Dispatcher();

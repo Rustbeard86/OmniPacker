@@ -30,3 +30,12 @@ dist-ssr
 .planning/
 CLAUDE.md
 AGENTS.md
+
+# Engine daemon local data - Steam refresh tokens (bearer credentials) live here.
+# The real store is per-user OS app-data (outside the repo); these guard any
+# stray local copy from ever being committed.
+engine-data/
+**/steam-tokens.json
+**/steam-tokens.json.tmp
+**/account.config
+downloads/.credentials/
