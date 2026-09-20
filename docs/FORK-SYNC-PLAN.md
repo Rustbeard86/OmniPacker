@@ -134,15 +134,24 @@ deferred to the end so we design it once against a stable backend.
 
 ### Phase 1 - Foundation (in progress)
 - [x] Re-anchor main; create backups/bundle.
-- [ ] Force-push main + backups to origin; fix tracking.
+- [x] Force-push main + backups + tags to origin; main tracks origin/main.
+- [x] Git identity set to Rustbeard86 <Rustbeard86@users.noreply.github.com>.
 - [ ] Reconcile CLAUDE.md onto the upstream base (the detailed fork notes must be
       rebuilt as features re-land).
 
-### Phase 2 - DepotDownloader fork control
-- [ ] Create our DD fork on GitHub; decide submodule vs separate repo (Q1).
-- [ ] Repoint `rebuild-depotdownloader.ps1` at our DD fork, pinned commit.
-- [ ] Re-tag our first DD build under our own scheme (drop the `+opN` lineage or
-      continue it with clear provenance).
+### Phase 2 - DepotDownloader fork control (DONE - PR #1)
+- [x] Fork created: `github.com/Rustbeard86/DepotDownloader`, parent
+      `elgreams/DepotDownloader` (forks `SteamRE/DepotDownloader`). `master` at
+      v3.4.0+op5 (`e17792d`), all `+opN` tags present.
+- [x] Vendored as submodule `vendor/DepotDownloader` (tracks `master`, pinned to
+      op5). Submodule has `elgreams` + `steamre` remotes for future syncs.
+- [x] `rebuild-depotdownloader.ps1` defaults to the submodule path.
+- Note: a pre-existing `Rustbeard86/DepotDownloader` fork (Rust's own earlier
+  "GitHubArchiver.Daemon" - auto-archive Workshop to GitHub) occupied the fork
+  slot and was deleted per instruction (permanent; no copy kept). Its concept
+  (Workshop -> GitHub archival) may be worth revisiting for the archiver vision.
+- [ ] Future: continue the `+opN` lineage on our fork as we add DD patches, with
+      provenance back to elgreams.
 
 ### Phase 3 - Port clean API modules (low risk, backend only)
 - [ ] Port `steam_news.rs`, `steam_store.rs`, `app_detail.rs` onto upstream base.
