@@ -280,6 +280,19 @@ Answers locked this round:
 - ENGINE: adopt SteamForge's SteamKit2 engine rather than duplicate it, subject to
   the integration analysis below. (Direction for Q-ARCH-1.)
 
+### 10.0 Config, profiles, rotation (locked)
+
+- CONFIG STORE: split. User-editable config + profiles as portable, diffable JSON
+  files (drop-in friendly, matches the loose-file/override ethos). Machine data -
+  library cache, dedupe, history, job state - in the engine daemon's SQLite.
+  (Resolves Q-CFG-1.)
+- PROFILES: a GLOBAL library of named profiles; each app/title can be assigned a
+  default profile; any job can select any profile. One place to edit, reused
+  across apps. (Resolves Q-CFG-2.)
+- ROTATION UX: automatic by default (AccountRouter-style, invisible owner switch)
+  with an optional manual "pin active account" override for power users. The
+  primary app list still spans all enabled accounts. (Resolves Q-ACCT-1.)
+
 ### 10.1 SteamForge engine - adoption analysis
 
 Capabilities present (verified):
