@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OmniPacker.EngineHost/OmniPacker.EngineHost.csproj" />
+    <Project Path="src/SteamForge.Abstractions/SteamForge.Abstractions.csproj" />
+    <Project Path="src/SteamForge.Engine/SteamForge.Engine.csproj" />
+    <Project Path="src/SteamForge.Plugins.Game/SteamForge.Plugins.Game.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OmniPacker.EngineHost.Tests/OmniPacker.EngineHost.Tests.csproj" />
+  </Folder>
+</Solution>

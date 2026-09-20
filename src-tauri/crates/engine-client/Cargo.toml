@@ -1,0 +1,9 @@
+[package]
+name = "engine-client"
+version = "0.1.0"
+edition = "2021"
+description = "Spawns and drives the OmniPacker engine daemon over the IPC protocol (docs/IPC-CONTRACT.md). No Tauri deps; the Tauri layer adapts its events to the webview."
+
+[dependencies]
+engine-ipc = { path = "../engine-ipc" }
+serde_json = "1"
