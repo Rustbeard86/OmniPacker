@@ -23,7 +23,14 @@ public sealed class EngineServices : IAsyncDisposable
 {
     private readonly ServiceProvider _provider;
 
-    private EngineServices(ServiceProvider provider) => _provider = provider;
+    private EngineServices(ServiceProvider provider, string dataDir)
+    {
+        _provider = provider;
+        DataDir = dataDir;
+    }
+
+    /// <summary>Root data directory (token store, catalog db, downloads).</summary>
+    public string DataDir { get; }
 
     /// <summary>
     /// Default on-device data directory when OMNIPACKER_ENGINE_DATA is unset:
@@ -77,7 +84,7 @@ public sealed class EngineServices : IAsyncDisposable
         services.AddSingleton<SteamContentClient>();
         services.AddSingleton<AccountRouter>();
 
-        return new EngineServices(services.BuildServiceProvider());
+        return new EngineServices(services.BuildServiceProvider(), Path.GetFullPath(dataDir));
     }
 
     // The Steam session is IAsyncDisposable, so the provider must be disposed async.

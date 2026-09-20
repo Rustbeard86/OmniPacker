@@ -23,6 +23,8 @@ EventBridge.Attach(engine, loop);
 QrTty.AttachIfEnabled(engine);
 SteamMethods.Register(dispatcher, engine);
 AuthMethods.Register(dispatcher, engine);
+MetadataMethods.Register(dispatcher, engine);
+DownloadMethods.Register(dispatcher, engine, loop);
 
 // Announce readiness (capabilities + versions) before processing any request.
 await loop.EmitAsync(new EventMessage("ready", CoreMethods.BuildHello(dispatcher)));

@@ -84,6 +84,16 @@ Rules:
 - `library.enumerate` params:null -> result:`{"account":"<name>","count":<n>,"sample":[{"appId":<id>,"name":"..."}]}`
   Enumerates owned apps for the logged-on account and persists them to the
   ownership catalog. Errors `unauthenticated` if not logged on.
+- `app.branches` params:`{"appId":<id>}` -> result:
+  `{"appId":<id>,"name":"...","branches":[{"name":"...","buildId":<n>,"passwordRequired":<bool>}],"supportedOs":["windows",...]}`
+- `app.depots` params:`{"appId":<id>,"branch":"public"?,"os":"windows"?}` -> result:
+  `{"appId":<id>,"name":"...","installDir":"...","buildId":<n>,"branch":"...","os":"...","depots":[{"depotId":<n>,"manifestId":"<string>","name":"...","isDlc":<bool>}]}`
+  `manifestId` is a STRING (64-bit; avoids JSON precision loss).
+- `download.start` params:`{"appId":<id>,"branch":"public"?,"os":"windows"?,"dest":"<path>"?}` ->
+  result:`{"jobId":"<hex>","started":true,"dest":"<path>"}`. Runs the download in
+  the background; watch `download.progress`/`download.done`/`download.failed`.
+- `download.cancel` params:`{"jobId":"<hex>"}` -> result:`{"cancelled":<bool>}`.
+  (`app.*`/`download.start` error `unauthenticated` if not logged on.)
 
 ## Events - v1 implemented
 
@@ -93,6 +103,9 @@ Rules:
   every engine `ILogBroadcaster` line is forwarded here (already redacted).
 - `auth.status` data: same shape as the `auth.status` result above; emitted on every
   Steam login state change so the host tracks QR url / guard prompt / logged-on live.
+- `download.progress` data:`{"jobId":"<hex>","percent":<0-100>,"message":"..."}`
+- `download.done` data:`{"jobId":"<hex>","appId":<id>,"directory":"...","fileCount":<n>,"totalBytes":<n>}`
+- `download.failed` data:`{"jobId":"<hex>","error":"...","cancelled":<bool>?}`
 
 ## Methods - reserved (planned, not yet implemented)
 
@@ -100,11 +113,9 @@ Documented so the contract is stable as they land. Payloads TBD when built.
 
 - Auth/accounts: `account.switch`, `account.pin`.
 - Library/metadata: `library.list` (aggregate across accounts), `app.info`,
-  `app.buildHistory`, `app.depots`.
-- Download: `download.start`, `download.cancel`, `download.status`.
-
-Reserved events: `progress` (`{jobId,percent,message}`), `download.done`,
-`download.failed`.
+  `app.buildHistory` (historical builds - needs the SteamDB tier).
+- Download: `download.status`; parity extras on `download.start` (branch password,
+  os-arch/language filters, validate).
 
 ## Versioning
 
