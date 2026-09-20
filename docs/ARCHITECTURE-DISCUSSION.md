@@ -337,11 +337,17 @@ Integration facts / constraints:
   48a4fef), pinned/provenanced; headless daemon (`engine/`) with the frozen v1
   IPC contract, transport-agnostic line-JSON over stdio; cross-language contract
   tests (C# codec + Rust engine-ipc against shared fixtures) in CI (verify.yml).
-- E1: [PARTIAL - PR #2] Engine composed in the daemon (Steam core, no auto-
-  connect); `log`/`auth.status` events bridged; offline `auth.status` +
-  `account.list` methods with tests. REMAINING (needs a Steam test account, so
-  not CI-hermetic): live QR + credential login, multi-account switch, ownership
-  enumeration; then replace `owned_apps`/watcher sidecar calls (B1/B2).
+- E1: [DONE - PR #2] Engine composed in the daemon (Steam core, no auto-connect);
+  `log`/`auth.status` events bridged; methods auth.status/account.list (offline),
+  auth.resume/beginQr/beginCredentials/submitGuard/logout, library.enumerate.
+  Wired into the Tauri backend: engine-client crate spawns/drives the daemon
+  (integration-tested against the real process), engine_bridge exposes
+  `engine_request` + forwards events on `engine-event` + kills on exit.
+  VERIFIED with real credentials: silent token resume -> LoggedOn; account.list;
+  library.enumerate = 940 apps; QR scan end to end -> LoggedOn. Credentials live
+  in per-user OS app-data, gitignore-guarded, never in the repo.
+  REMAINING: multi-account switch/pin; replace the old `owned_apps`/watcher
+  sidecar paths with engine calls (B1/B2) once the UI consumes engine_request.
 - E2: Route metadata/PICS/manifest-history through the engine (B3, B7 history).
 - E3: Route downloads through the engine (port branch-password/os/arch/language/
   validate into `Plugins.Game`), keep OmniPacker finalization/.acf on top; retire
