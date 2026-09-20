@@ -263,3 +263,84 @@ primary list, per-app window, session/overlay views - iterated as drop-ins first
 - Q-SCOPE-1: Output/upload - SteamForge uploads to Gofile and prunes. Is any
   upload/share/expiry behavior in scope for OmniPacker, or is it strictly a local
   archiver (package to disk / 7-Zip only)?
+
+---
+
+## 10. Decisions log - review 2 (2026-09-20)
+
+Answers locked this round:
+- SCOPE: local archiver only (package to disk / optional 7-Zip). Upload/share is
+  out for now; could be a later optional plugin. (Resolves Q-SCOPE-1.)
+- API-FIRST: yes. Freeze a backend command/event contract before serious UI work;
+  UI is a swappable, drop-in-overridable client. (Resolves Q-UI-2.)
+- STEAMDB OS: implement Windows (WebView2) first, but build the platform-webview
+  behind an abstraction so macOS/Linux support is a minimal, well-documented
+  community PR - do not force contributors to touch core logic. (Resolves Q-SDB-1
+  with a developer-friendliness requirement: clean extension points + docs.)
+- ENGINE: adopt SteamForge's SteamKit2 engine rather than duplicate it, subject to
+  the integration analysis below. (Direction for Q-ARCH-1.)
+
+### 10.1 SteamForge engine - adoption analysis
+
+Capabilities present (verified):
+- `SteamContentClient` (1753 LOC): CDN auth tokens, depot keys, branch-scoped
+  manifest download, chunk download/decrypt/decompress, PICS appinfo cache with
+  build ids + depot manifest GIDs (dedupe ground truth). Manifest fetch takes an
+  explicit manifestId + branch, so HISTORICAL builds are natively trivial (pass
+  the old manifest id) - no SteamDB needed for the download itself.
+- `AccountRouter`: auto-switches the active session to an account that OWNS the
+  app (`EnsureOwnerAsync`/`RunWithOwnerAsync`, single active account, FIFO) - this
+  is exactly the invisible multi-account rotation we want.
+- `SteamSessionManager` + `WebAuthenticator` + `SteamTokenStore`: QR + credential
+  auth, token persistence, multi-account.
+- Jobs: `OwnershipScanner`, `LibraryRescanService`, `PicsChangeWatcher`,
+  `JobStore` (SQLite), `StorageMonitor`, `ExpiryPruner`, `PipelineRunner`.
+- Plugins: `Game` (app/game download), `Workshop`, `SevenZip`, `Images`, `Gofile`.
+
+Gaps vs the DepotDownloader sidecar OmniPacker uses today (build locally):
+- Branch PASSWORD (`-betapassword`), os/osarch/language depot filtering,
+  `-validate`, and the fork-only enumeration markers. `Plugins.Game` is the place
+  to check/extend for the download option matrix.
+- The steamapps/.acf layout: OmniPacker already owns this (job_finalization,
+  acf_generator); the engine only needs to yield raw depot content + metadata.
+
+Integration facts / constraints:
+- Cross-language: engine is C#/.NET 10; OmniPacker backend is Rust/Tauri. Reuse =
+  run the engine as a HEADLESS SIDECAR/DAEMON that the Rust backend drives (the
+  way it drives DD), NOT a linked library.
+- No headless host exists (only `SteamForge.Web`). We must build a small headless
+  host project exposing the engine over an IPC contract.
+- SteamForge is production (VPS) and local-only (no GitHub remote), and its docs
+  carry VPS IP/admin details. So OmniPacker must take its OWN copy and evolve it;
+  changes NEVER go back to the production SteamForge tree. Record the source
+  commit for provenance.
+- Adopting the engine can eventually RETIRE the DD sidecar (one sidecar, all our
+  code), which is the real "reduce size deployed" win. Until the engine downloader
+  reaches DD parity, DD (the vendored submodule) stays as the working downloader.
+
+### 10.2 Proposed engine phases (fit into the backend-first plan)
+
+- E0: Bring the engine under OmniPacker's control (copy/vendor Engine +
+  Abstractions + Plugins.Game, scrubbed of VPS/secret material), pin the source
+  commit, add a headless daemon host + IPC contract skeleton.
+- E1: Prove auth (QR + credentials, multi-account) + ownership enumeration through
+  the daemon; replace `owned_apps`/watcher sidecar calls (B1/B2) with it.
+- E2: Route metadata/PICS/manifest-history through the engine (B3, B7 history).
+- E3: Route downloads through the engine (port branch-password/os/arch/language/
+  validate into `Plugins.Game`), keep OmniPacker finalization/.acf on top; retire
+  the DD sidecar + submodule once at parity.
+
+### 10.3 New open questions (engine)
+
+- Q-ENG-1: Bring the engine in as a vendored COPY inside OmniPacker (subtree/copy,
+  fully isolates production, no cross-repo link) or push SteamForge to a PRIVATE
+  GitHub repo and consume Engine via submodule (traceable, mirrors the DD setup,
+  but requires publishing scrubbed production code)? (Recommend: vendored copy -
+  it honors "changes local only" with the least risk to production.)
+- Q-ENG-2: Daemon IPC style - line-oriented JSON over stdio (like DD, simplest,
+  matches existing patterns) or a local loopback HTTP/WebSocket (richer streaming
+  for progress/log/auth events, but heavier)? (Recommend: stdio line-JSON with
+  event markers first; revisit if streaming needs outgrow it.)
+- Q-ENG-3: Retire DD once the engine downloader reaches parity, or keep DD as a
+  selectable alternate downloader long-term? (Recommend: retire after parity to
+  reduce size and maintenance.)
