@@ -46,8 +46,24 @@ public class SteamMethodsTests
 
         Assert.Contains("auth.status", dispatcher.Capabilities);
         Assert.Contains("account.list", dispatcher.Capabilities);
+        Assert.Contains("account.switch", dispatcher.Capabilities);
         Assert.Contains("auth.resume", dispatcher.Capabilities);
         Assert.Contains("library.enumerate", dispatcher.Capabilities);
+    }
+
+    [Fact]
+    public async Task Account_switch_requires_account_param()
+    {
+        using var temp = new TempData();
+        await using var engine = EngineServices.Create(temp.Dir);
+        var dispatcher = new Dispatcher();
+        SteamMethods.Register(dispatcher, engine);
+
+        var res = await dispatcher.HandleAsync(
+            new RequestMessage(9, "account.switch", new System.Text.Json.Nodes.JsonObject()),
+            CancellationToken.None);
+        Assert.False(res.Ok);
+        Assert.Equal(RpcError.BadRequest, res.Error!.Code);
     }
 
     [Fact]

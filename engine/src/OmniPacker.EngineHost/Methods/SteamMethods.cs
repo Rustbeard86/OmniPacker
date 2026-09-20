@@ -32,6 +32,25 @@ public static class SteamMethods
             return Task.FromResult<JsonNode?>(new JsonObject { ["accounts"] = accounts });
         });
 
+        // Switch the active session to another stored account (silent, via its
+        // durable token). The invisible multi-account rotation behind the app list.
+        dispatcher.Register("account.switch", async (p, ct) =>
+        {
+            var account = (p?["account"] as JsonValue)?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(account))
+                throw RpcException.BadRequest("Missing required param 'account'.");
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(60));
+            engine.Session.StartPump();
+            var switched = await engine.Session.SwitchToAccountAsync(account, timeout.Token);
+            return new JsonObject
+            {
+                ["switched"] = switched,
+                ["status"] = EventBridge.AuthStatusPayload(engine.Session.Status),
+            };
+        });
+
         // --- Live methods (connect to Steam; exercised by manual/integration runs,
         // not CI). Each is time-boxed so a hung Steam call cannot wedge the loop. ---
 
