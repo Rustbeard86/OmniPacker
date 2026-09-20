@@ -64,6 +64,13 @@ Rules:
   `{"protocol":1,"engine":"<engine asm version>","host":"OmniPacker.EngineHost","capabilities":[<method names>]}`
 - `ping` params:`{"nonce":<any>?}` -> result:`{"pong":true,"nonce":<echoed or null>}`
 - `shutdown` params:null -> result:`{"stopping":true}`; the engine then exits 0.
+- `auth.status` params:null -> result:
+  `{"state":"<SteamAuthState>","accountName":<string|null>,"qrChallengeUrl":<string|null>,"prompt":<string|null>,"error":<string|null>}`
+  Reads current login state without connecting. `state` is a SteamAuthState name:
+  `Disconnected|Connecting|AwaitingQrScan|AwaitingGuardCode|LoggingIn|LoggedOn|Failed`.
+- `account.list` params:null -> result:
+  `{"accounts":[{"account":"<name>","obtainedAt":"<ISO-8601 UTC>"}, ...]}`
+  Accounts with a stored durable refresh token; empty on a fresh install. Offline.
 
 ## Events - v1 implemented
 
@@ -71,21 +78,22 @@ Rules:
   emitted once on startup before any request is processed.
 - `log` data:`{"ts":"<ISO-8601 UTC>","level":"debug|info|warning|error","source":"<tag>","message":"<text>"}`
   every engine `ILogBroadcaster` line is forwarded here (already redacted).
+- `auth.status` data: same shape as the `auth.status` result above; emitted on every
+  Steam login state change so the host tracks QR url / guard prompt / logged-on live.
 
 ## Methods - reserved (planned, not yet implemented)
 
 Documented so the contract is stable as they land. Payloads TBD when built.
 
-- Auth/accounts: `auth.status`, `auth.beginQr`, `auth.beginCredentials`,
-  `auth.submitGuard`, `account.list`, `account.switch`, `account.pin`,
-  `account.logout`.
+- Auth/accounts: `auth.beginQr`, `auth.beginCredentials`, `auth.submitGuard`,
+  `account.switch`, `account.pin`, `account.logout`.
 - Library/metadata: `library.enumerate` (per account -> ownership catalog),
   `library.list` (aggregate across accounts), `app.info`, `app.buildHistory`,
   `app.depots`.
 - Download: `download.start`, `download.cancel`, `download.status`.
 
-Reserved events: `auth.status` (state changes incl. QR url + guard prompt),
-`progress` (`{jobId,percent,message}`), `download.done`, `download.failed`.
+Reserved events: `progress` (`{jobId,percent,message}`), `download.done`,
+`download.failed`.
 
 ## Versioning
 

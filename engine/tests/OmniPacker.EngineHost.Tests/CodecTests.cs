@@ -93,6 +93,25 @@ public class CodecTests
     }
 
     [Fact]
+    public void Parses_account_list_response_fixture()
+    {
+        var res = Assert.IsType<ResponseMessage>(Codec.Parse(Fixtures.ReadLine("res_account_list.json")));
+        Assert.True(res.Ok);
+        var accounts = res.Result!["accounts"]!.AsArray();
+        Assert.Single(accounts);
+        Assert.Equal("archiver", accounts[0]!["account"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Parses_auth_status_response_fixture()
+    {
+        var res = Assert.IsType<ResponseMessage>(Codec.Parse(Fixtures.ReadLine("res_auth_status.json")));
+        Assert.True(res.Ok);
+        Assert.Equal("LoggedOn", res.Result!["state"]!.GetValue<string>());
+        Assert.Equal("archiver", res.Result!["accountName"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void Encoded_message_has_no_embedded_newline()
     {
         var line = Codec.Encode(new EventMessage("log", new JsonObject

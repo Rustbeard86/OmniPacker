@@ -191,6 +191,43 @@ mod tests {
     }
 
     #[test]
+    fn parses_auth_status_response_fixture() {
+        match Message::parse(&fixture("res_auth_status.json")).unwrap() {
+            Message::Response { ok, result, .. } => {
+                assert!(ok);
+                let r = result.unwrap();
+                assert_eq!(r["state"], "LoggedOn");
+                assert_eq!(r["accountName"], "archiver");
+            }
+            other => panic!("expected response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_auth_status_event_fixture() {
+        match Message::parse(&fixture("evt_auth_status.json")).unwrap() {
+            Message::Event { event, data } => {
+                assert_eq!(event, "auth.status");
+                assert_eq!(data.unwrap()["state"], "Disconnected");
+            }
+            other => panic!("expected event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_account_list_response_fixture() {
+        match Message::parse(&fixture("res_account_list.json")).unwrap() {
+            Message::Response { ok, result, .. } => {
+                assert!(ok);
+                let accounts = result.unwrap()["accounts"].as_array().unwrap().clone();
+                assert_eq!(accounts.len(), 1);
+                assert_eq!(accounts[0]["account"], "archiver");
+            }
+            other => panic!("expected response, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn roundtrips_a_constructed_response() {
         let original = Message::Response {
             id: 42,
