@@ -333,11 +333,15 @@ Integration facts / constraints:
 
 ### 10.2 Proposed engine phases (fit into the backend-first plan)
 
-- E0: Bring the engine under OmniPacker's control (copy/vendor Engine +
-  Abstractions + Plugins.Game, scrubbed of VPS/secret material), pin the source
-  commit, add a headless daemon host + IPC contract skeleton.
-- E1: Prove auth (QR + credentials, multi-account) + ownership enumeration through
-  the daemon; replace `owned_apps`/watcher sidecar calls (B1/B2) with it.
+- E0: [DONE - PR #2] Vendored Engine + Abstractions + Plugins.Game (SteamForge
+  48a4fef), pinned/provenanced; headless daemon (`engine/`) with the frozen v1
+  IPC contract, transport-agnostic line-JSON over stdio; cross-language contract
+  tests (C# codec + Rust engine-ipc against shared fixtures) in CI (verify.yml).
+- E1: [PARTIAL - PR #2] Engine composed in the daemon (Steam core, no auto-
+  connect); `log`/`auth.status` events bridged; offline `auth.status` +
+  `account.list` methods with tests. REMAINING (needs a Steam test account, so
+  not CI-hermetic): live QR + credential login, multi-account switch, ownership
+  enumeration; then replace `owned_apps`/watcher sidecar calls (B1/B2).
 - E2: Route metadata/PICS/manifest-history through the engine (B3, B7 history).
 - E3: Route downloads through the engine (port branch-password/os/arch/language/
   validate into `Plugins.Game`), keep OmniPacker finalization/.acf on top; retire
