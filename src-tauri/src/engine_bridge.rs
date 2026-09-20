@@ -12,7 +12,7 @@ use std::time::Duration;
 use engine_client::EngineClient;
 use engine_ipc::Message;
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Default per-request timeout. Enumeration/login can be slow, so it is generous;
 /// the daemon time-boxes its own long operations more tightly.
@@ -35,7 +35,7 @@ impl EngineState {
             return Ok(());
         }
 
-        let (program, args) = resolve_engine_command()?;
+        let (program, args) = resolve_engine_command(app)?;
         let (client, events) =
             EngineClient::spawn(&program, &args, &[]).map_err(|e| format!("failed to start engine daemon: {e}"))?;
 
@@ -77,11 +77,14 @@ impl Default for EngineState {
     }
 }
 
-/// Resolve how to launch the daemon. Dev-first; a bundled sidecar comes later.
-/// - OMNIPACKER_ENGINE_CMD: an explicit program to run (no args).
-/// - OMNIPACKER_ENGINE_DLL: run `dotnet <dll>`.
-/// - otherwise guess the dev build output relative to the working directory.
-fn resolve_engine_command() -> Result<(String, Vec<String>), String> {
+/// Resolve how to launch the daemon:
+/// 1. the bundled self-contained sidecar (production, resolved as a resource);
+/// 2. OMNIPACKER_ENGINE_CMD (explicit program) / OMNIPACKER_ENGINE_DLL (`dotnet <dll>`);
+/// 3. a dev build-output guess relative to the working directory.
+fn resolve_engine_command(app: &AppHandle) -> Result<(String, Vec<String>), String> {
+    if let Some(sidecar) = resolve_bundled_sidecar(app) {
+        return Ok((sidecar, Vec::new()));
+    }
     if let Ok(cmd) = std::env::var("OMNIPACKER_ENGINE_CMD") {
         if !cmd.trim().is_empty() {
             return Ok((cmd, Vec::new()));
@@ -102,6 +105,59 @@ fn resolve_engine_command() -> Result<(String, Vec<String>), String> {
         }
     }
     Err("engine daemon not found; set OMNIPACKER_ENGINE_DLL to OmniPacker.EngineHost.dll (or build engine/)".to_string())
+}
+
+/// The bundled self-contained sidecar at binaries/<platform>/OmniPackerEngine[.exe],
+/// resolved as a Tauri resource. Returns None when not bundled (dev builds).
+fn resolve_bundled_sidecar(app: &AppHandle) -> Option<String> {
+    #[cfg(windows)]
+    let name = "OmniPackerEngine.exe";
+    #[cfg(not(windows))]
+    let name = "OmniPackerEngine";
+
+    let rel = format!("binaries/{}/{}", engine_platform_subdir(), name);
+    let path = app
+        .path()
+        .resolve(rel, tauri::path::BaseDirectory::Resource)
+        .ok()?;
+    // Strip the \\?\ extended-length prefix, which breaks .NET CLR startup.
+    let path = strip_extended_length_prefix(path);
+    if path.exists() {
+        Some(path.to_string_lossy().into_owned())
+    } else {
+        None
+    }
+}
+
+fn engine_platform_subdir() -> &'static str {
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    { "win-x64" }
+    #[cfg(all(windows, target_arch = "aarch64"))]
+    { "win-arm64" }
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    { "linux-x64" }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    { "linux-arm64" }
+    #[cfg(all(target_os = "linux", target_arch = "arm"))]
+    { "linux-arm" }
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    { "macos-x64" }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    { "macos-arm64" }
+}
+
+#[cfg(windows)]
+fn strip_extended_length_prefix(path: std::path::PathBuf) -> std::path::PathBuf {
+    let s = path.to_string_lossy();
+    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        return std::path::PathBuf::from(stripped);
+    }
+    path
+}
+
+#[cfg(not(windows))]
+fn strip_extended_length_prefix(path: std::path::PathBuf) -> std::path::PathBuf {
+    path
 }
 
 /// Frontend entry point: forward one method call to the engine over the contract.

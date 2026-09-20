@@ -36,3 +36,15 @@ dotnet test  engine/OmniPacker.Engine.slnx
 
 The daemon reads line-JSON requests on stdin and writes responses/events on
 stdout; stderr is human diagnostics only.
+
+## Shipping (self-contained sidecar)
+
+`scripts/build-engine-host.ps1 [-Rid <rid>]` publishes the daemon self-contained
+(single file, no .NET runtime needed) into `src-tauri/binaries/<platform>/
+OmniPackerEngine(.exe)`, alongside the DepotDownloader/7-Zip sidecars. It is
+gitignored (81 MB) and rebuilt on demand. `bundle.resources` already globs
+`binaries/<platform>/*`, so a release bundle picks it up automatically; the Tauri
+backend resolves it via the resource path (falling back to `dotnet <dll>` in dev).
+Run this before packaging a release (TODO: call it from the per-platform release
+scripts).
+

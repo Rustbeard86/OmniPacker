@@ -39,3 +39,8 @@ engine-data/
 **/steam-tokens.json.tmp
 **/account.config
 downloads/.credentials/
+
+# Engine daemon sidecar binaries (81MB each) - built via scripts/build-engine-host.ps1,
+# not committed (like the fork's DepotDownloader sidecars).
+src-tauri/binaries/*/OmniPackerEngine
+src-tauri/binaries/*/OmniPackerEngine.exe
