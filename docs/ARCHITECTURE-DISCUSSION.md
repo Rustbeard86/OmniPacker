@@ -348,10 +348,19 @@ Integration facts / constraints:
   in per-user OS app-data, gitignore-guarded, never in the repo.
   REMAINING: multi-account switch/pin; replace the old `owned_apps`/watcher
   sidecar paths with engine calls (B1/B2) once the UI consumes engine_request.
-- E2: Route metadata/PICS/manifest-history through the engine (B3, B7 history).
-- E3: Route downloads through the engine (port branch-password/os/arch/language/
-  validate into `Plugins.Game`), keep OmniPacker finalization/.acf on top; retire
-  the DD sidecar + submodule once at parity.
+- E2: [DONE - PR #2] app.branches + app.depots through the engine (branches with
+  build ids + password flags + supported OS; resolved per-branch/OS depot plan
+  with DLC association). Verified live (TF2 440). account.switch added +
+  verified (multi-account rotation). Historical builds (app.buildHistory) still
+  need the SteamDB tier.
+- E3: [PARTIAL - PR #2] download.start/cancel via the engine's SteamKit2
+  downloader, streaming download.progress/done/failed. Verified live (TF2:
+  resolved 8 depots, began chunk download, progress events). Daemon packaged as a
+  self-contained sidecar (build-engine-host.ps1; resolved via the resource path,
+  dev fallback to `dotnet <dll>`).
+  REMAINING (needs in-the-loop test resources): branch-password + os-arch/language
+  filters + validate parity in the engine; wire engine output into OmniPacker's
+  finalization/.acf and verify with a SMALL app; then retire the DD sidecar.
 
 ### 10.3 Engine decisions (locked)
 
