@@ -11,7 +11,7 @@ edition = "2021"
 # engine-ipc holds the IPC protocol types (docs/IPC-CONTRACT.md). It is a pure
 # serde crate with no Tauri deps so the cross-language contract tests run without
 # a webview toolchain (`cargo test -p engine-ipc`).
-members = ["crates/engine-ipc"]
+members = ["crates/engine-ipc", "crates/engine-client"]
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -38,6 +38,8 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 regex = "1"
 num_cpus = "1.16"
 sysinfo = "0.30"
+engine-ipc = { path = "crates/engine-ipc" }
+engine-client = { path = "crates/engine-client" }
 
 [target.'cfg(windows)'.dependencies]
 codepage-strings = "1.0.2"

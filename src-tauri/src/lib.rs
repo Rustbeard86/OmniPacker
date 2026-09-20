@@ -2,6 +2,7 @@ mod acf_generator;
 pub(crate) mod debug_console;
 mod debug_log;
 mod depot_runner;
+mod engine_bridge;
 mod job_finalization;
 mod job_metadata;
 mod job_staging;
@@ -122,6 +123,7 @@ pub fn run() {
         .manage(TemplateMetadataState::default())
         .manage(OutputConflictState::new())
         .manage(DebugConsoleState::new(debug_console_flag))
+        .manage(engine_bridge::EngineState::new())
         .setup(|app| {
             let app_handle = app.handle();
             match cleanup_orphaned_staging(&app_handle) {
@@ -185,7 +187,8 @@ pub fn run() {
             resolve_output_conflict,
             check_for_update,
             get_app_version,
-            open_external_url
+            open_external_url,
+            engine_bridge::engine_request
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -199,6 +202,7 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 app_handle.state::<DepotRunnerState>().kill_child();
                 app_handle.state::<SevenZipRunnerState>().kill_child();
+                app_handle.state::<engine_bridge::EngineState>().kill_child();
             }
         });
 }
