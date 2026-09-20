@@ -20,7 +20,9 @@ CoreMethods.Register(dispatcher, loop);
 
 await using var engine = EngineServices.Create(dataDir);
 EventBridge.Attach(engine, loop);
+QrTty.AttachIfEnabled(engine);
 SteamMethods.Register(dispatcher, engine);
+AuthMethods.Register(dispatcher, engine);
 
 // Announce readiness (capabilities + versions) before processing any request.
 await loop.EmitAsync(new EventMessage("ready", CoreMethods.BuildHello(dispatcher)));

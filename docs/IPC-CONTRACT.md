@@ -71,6 +71,19 @@ Rules:
 - `account.list` params:null -> result:
   `{"accounts":[{"account":"<name>","obtainedAt":"<ISO-8601 UTC>"}, ...]}`
   Accounts with a stored durable refresh token; empty on a fresh install. Offline.
+- `auth.resume` params:null -> result:`{"resumed":<bool>,"status":<auth.status payload>}`
+  Silent login from the stored refresh token. Connects to Steam.
+- `auth.beginQr` params:null -> result:`{"started":true}`
+  Starts QR login in the background; the challenge URL then arrives as an
+  `auth.status` event with state `AwaitingQrScan` and `qrChallengeUrl` set.
+- `auth.beginCredentials` params:`{"username":"...","password":"..."}` -> result:
+  `{"started":true}`; may then emit an `auth.status` `AwaitingGuardCode` event.
+- `auth.submitGuard` params:`{"code":"..."}` -> result:`{"accepted":<bool>}`
+  Feeds a Steam Guard code to the in-progress login (`accepted:false` if none waits).
+- `auth.logout` params:null -> result:`{"loggedOut":true}` (stored token kept).
+- `library.enumerate` params:null -> result:`{"account":"<name>","count":<n>,"sample":[{"appId":<id>,"name":"..."}]}`
+  Enumerates owned apps for the logged-on account and persists them to the
+  ownership catalog. Errors `unauthenticated` if not logged on.
 
 ## Events - v1 implemented
 
@@ -85,11 +98,9 @@ Rules:
 
 Documented so the contract is stable as they land. Payloads TBD when built.
 
-- Auth/accounts: `auth.beginQr`, `auth.beginCredentials`, `auth.submitGuard`,
-  `account.switch`, `account.pin`, `account.logout`.
-- Library/metadata: `library.enumerate` (per account -> ownership catalog),
-  `library.list` (aggregate across accounts), `app.info`, `app.buildHistory`,
-  `app.depots`.
+- Auth/accounts: `account.switch`, `account.pin`.
+- Library/metadata: `library.list` (aggregate across accounts), `app.info`,
+  `app.buildHistory`, `app.depots`.
 - Download: `download.start`, `download.cancel`, `download.status`.
 
 Reserved events: `progress` (`{jobId,percent,message}`), `download.done`,
